@@ -29,6 +29,19 @@ import type {
   UTCTimestamp
 } from 'lightweight-charts';
 
+type LightweightChartsModule = typeof import('lightweight-charts');
+
+let lightweightChartsPromise: Promise<LightweightChartsModule> | null = null;
+
+async function loadLightweightCharts(): Promise<LightweightChartsModule> {
+  if (!lightweightChartsPromise) {
+    lightweightChartsPromise = import(
+      /* webpackChunkName: "lightweight-charts" */ 'lightweight-charts'
+    ) as Promise<LightweightChartsModule>;
+  }
+  return lightweightChartsPromise;
+}
+
 type IndicatorScale = 'rsi' | 'macd' | 'dmi';
 
 type IndicatorVisibility = Record<IndicatorScale, boolean>;
@@ -600,7 +613,7 @@ export function CandlestickChart() {
     let chartLib: typeof import('lightweight-charts') | null = null;
 
     async function setupChart() {
-      chartLib = await import('lightweight-charts');
+      chartLib = await loadLightweightCharts();
       if (!isMounted || !mainContainerRef.current) {
         return;
       }

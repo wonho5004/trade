@@ -24,11 +24,20 @@
   - `NEXT_PUBLIC_SUPABASE_URL`  
   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`  
   - `SUPABASE_SERVICE_ROLE_KEY` (서버 전용)
-- 서버 컴포넌트/Route Handler에서 사용할 Supabase 클라이언트 래퍼 작성(`src/lib/supabase/server.ts` 가칭).
+- `.env.local` 예시:
+  ```
+  NEXT_PUBLIC_APP_URL=http://localhost:3000
+  NEXT_PUBLIC_SUPABASE_URL=https://<project>.supabase.co
+  NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon-key>
+  SUPABASE_SERVICE_ROLE_KEY=<service-role-key>
+  ```
+  > `.env.local` 파일은 `.gitignore`에 포함되어 있으므로 직접 생성해서 값 입력.
+- 서버 컴포넌트/Route Handler에서 사용할 Supabase 클라이언트 래퍼 작성(`src/lib/supabase/server.ts`).
 - 브라우저 클라이언트용 헬퍼(`src/lib/supabase/client.ts`)로 로그인/로그아웃/세션 조회 기능 제공.
 
 ## 페이지 및 라우팅 설계
 - `src/app/(auth)/login/page.tsx`: 로그인 UI, Supabase Auth signInWithPassword 호출.
+- `src/app/(auth)/register/page.tsx`: 회원가입 폼과 Server Action을 통한 signUp 처리.
 - `src/app/(auth)/reset-password` 등 비밀번호 재설정 토큰 처리 라우트.
 - 보호 라우트 구성:
   - 미들웨어(`middleware.ts`)에서 Supabase 쿠키 기반 세션 검증 후 역할에 따라 분기.
@@ -37,6 +46,7 @@
   - `src/app/dashboard/layout.tsx`: 기본 사용자 이상 허용.
   - `src/app/admin/layout.tsx`: `admin` 이상 권한 검사.
   - `src/app/ops/layout.tsx`: `sys_admin`만 허용.
+- `src/app/admin/page.tsx`, `src/app/ops/page.tsx`: 역할별 전용 UI 및 안내 배치.
 
 ## 추가 고려 사항
 - 로컬 개발 시 `supabase start` 혹은 프로젝트 제공 Docker 스택으로 로컬 스키마 유지.
