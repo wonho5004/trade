@@ -19,6 +19,10 @@ export interface ValueHighlightSetting extends HighlightThresholdSetting {
   threshold: number;
 }
 
+export interface BollingerBandHighlightSetting extends HighlightThresholdSetting {
+  field: CandleFieldOption;
+}
+
 export interface MaHighlightConfig {
   candleField: CandleFieldOption;
   opacity: number;
@@ -33,9 +37,8 @@ export interface MaConfig extends LineStyleSetting {
 }
 
 export interface BollingerHighlightConfig {
-  candleField: CandleFieldOption;
-  upper: HighlightThresholdSetting;
-  lower: HighlightThresholdSetting;
+  upper: BollingerBandHighlightSetting;
+  lower: BollingerBandHighlightSetting;
 }
 
 export interface BollingerConfig {
@@ -157,7 +160,7 @@ export interface IndicatorConfigState {
   updateBollingerHighlight: (partial: Partial<BollingerHighlightConfig>) => void;
   updateBollingerHighlightThreshold: (
     key: 'upper' | 'lower',
-    partial: Partial<HighlightThresholdSetting>
+    partial: Partial<BollingerBandHighlightSetting>
   ) => void;
   updateRsi: (partial: Partial<RsiConfig>) => void;
   updateRsiStyle: (key: 'plot' | 'upper' | 'middle' | 'lower', partial: Partial<LineStyleSetting>) => void;

@@ -3,7 +3,7 @@ import { createJSONStorage, persist } from 'zustand/middleware';
 
 import type { IntervalOption } from '@/types/chart';
 
-interface OverlaySettings {
+export interface OverlaySettings {
   ma: boolean;
   bollinger: boolean;
   rsi: boolean;
@@ -12,7 +12,7 @@ interface OverlaySettings {
   highlight: boolean;
 }
 
-interface ChartState {
+export interface ChartState {
   symbol: string;
   interval: IntervalOption;
   overlays: OverlaySettings;

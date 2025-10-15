@@ -7,6 +7,7 @@ import type {
   DmiDominanceHighlightConfig,
   DmiHighlightConfig,
   DmiVisibilityConfig,
+  CandleFieldOption,
   HighlightThresholdSetting,
   IndicatorConfigState,
   LineStyleSetting,
@@ -76,9 +77,8 @@ const defaultRsiHighlight = (): RsiHighlightConfig => ({
 });
 
 const defaultBollingerHighlight = (): BollingerHighlightConfig => ({
-  candleField: 'close',
-  upper: createHighlightThreshold('#f97316', '', 'arrowDown'),
-  lower: createHighlightThreshold('#38bdf8', '', 'arrowUp')
+  upper: { ...createHighlightThreshold('#f97316', '', 'arrowDown'), field: 'close' },
+  lower: { ...createHighlightThreshold('#38bdf8', '', 'arrowUp'), field: 'close' }
 });
 
 const defaultDmiHighlight = (): DmiHighlightConfig => ({
@@ -473,7 +473,7 @@ export const useIndicatorConfigStore = create<IndicatorConfigState>()(
     }),
     {
       name: 'indicator-config',
-      version: 2,
+      version: 3,
       storage: createJSONStorage(() =>
         typeof window !== 'undefined' ? window.localStorage : emptyStorage
       ),
@@ -488,16 +488,40 @@ export const useIndicatorConfigStore = create<IndicatorConfigState>()(
         const typed = persistedState as Partial<
           Pick<IndicatorConfigState, 'ma' | 'bollinger' | 'rsi' | 'macd' | 'dmi'>
         >;
+        let nextState = { ...typed };
         if (version < 2 && typed.macd) {
-          return {
-            ...typed,
+          nextState = {
+            ...nextState,
             macd: {
               ...typed.macd,
               visibility: typed.macd.visibility ?? defaultMacdVisibility()
             }
           };
         }
-        return typed;
+        if (version < 3 && typed.bollinger?.highlight) {
+          const { highlight, ...rest } = typed.bollinger;
+          const candleField =
+            (highlight as { candleField?: CandleFieldOption })?.candleField ?? 'close';
+          nextState = {
+            ...nextState,
+            bollinger: {
+              ...rest,
+              highlight: {
+                upper: {
+                  ...highlight.upper,
+                  field:
+                    (highlight.upper as { field?: CandleFieldOption })?.field ?? candleField ?? 'close'
+                },
+                lower: {
+                  ...highlight.lower,
+                  field:
+                    (highlight.lower as { field?: CandleFieldOption })?.field ?? candleField ?? 'close'
+                }
+              }
+            }
+          };
+        }
+        return nextState;
       }
     }
   )

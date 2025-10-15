@@ -183,15 +183,7 @@ function getCandleFieldValue(candle: Candle, field: 'open' | 'high' | 'low' | 'c
 }
 
 function formatSeoulDateLabel(timestamp: UTCTimestamp): string {
-  const target = new Date(timestamp * 1000);
-  const date = new Date(
-    target.getUTCFullYear(),
-    target.getUTCMonth(),
-    target.getUTCDate()
-  );
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${month}/${day}`;
+  return seoulMonthDayFormatter.format(new Date(timestamp * 1000));
 }
 
 function formatSeoulDisplay(date: Date): string {
@@ -1269,28 +1261,33 @@ export function CandlestickChart() {
         }
 
         if (overlays.bollinger) {
-          const { candleField, upper, lower } = bollingerConfig.highlight;
+          const { upper, lower } = bollingerConfig.highlight;
           candles.forEach((candle, index) => {
             const upperBand = enrichedIndicators.boll.upper[index];
             const lowerBand = enrichedIndicators.boll.lower[index];
-            const candleValue = getCandleFieldValue(candle, candleField);
-            if (upper.enabled && upperBand != null && candleValue > upperBand) {
-              markers.push({
-                time: toTimestamp(candle.timestamp),
-                position: 'aboveBar',
-                color: upper.color,
-                shape: markerShapeValue[upper.markerShape],
-                text: upper.label
-              });
+            if (upper.enabled && upperBand != null) {
+              const reference = getCandleFieldValue(candle, upper.field);
+              if (reference > upperBand) {
+                markers.push({
+                  time: toTimestamp(candle.timestamp),
+                  position: 'aboveBar',
+                  color: upper.color,
+                  shape: markerShapeValue[upper.markerShape],
+                  text: upper.label
+                });
+              }
             }
-            if (lower.enabled && lowerBand != null && candleValue < lowerBand) {
-              markers.push({
-                time: toTimestamp(candle.timestamp),
-                position: 'belowBar',
-                color: lower.color,
-                shape: markerShapeValue[lower.markerShape],
-                text: lower.label
-              });
+            if (lower.enabled && lowerBand != null) {
+              const reference = getCandleFieldValue(candle, lower.field);
+              if (reference < lowerBand) {
+                markers.push({
+                  time: toTimestamp(candle.timestamp),
+                  position: 'belowBar',
+                  color: lower.color,
+                  shape: markerShapeValue[lower.markerShape],
+                  text: lower.label
+                });
+              }
             }
           });
         }

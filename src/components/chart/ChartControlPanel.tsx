@@ -3,6 +3,7 @@
 import { Fragment, useEffect, useMemo, useState, useTransition } from 'react';
 
 import { useChartStore } from '@/stores/chartStore';
+import type { ChartState } from '@/stores/chartStore';
 import { useIndicatorConfigStore } from '@/stores/indicatorConfigStore';
 import type { IntervalOption } from '@/types/chart';
 import type {
@@ -29,7 +30,7 @@ const sortOptions: Array<{
 ];
 
 const overlayLabels: Array<{
-  key: keyof ReturnType<typeof useChartStore>['overlays'];
+  key: keyof ChartState['overlays'];
   label: string;
   configurable?: boolean;
 }> = [
@@ -38,7 +39,7 @@ const overlayLabels: Array<{
   { key: 'rsi', label: 'RSI', configurable: true },
   { key: 'macd', label: 'MACD', configurable: true },
   { key: 'dmi', label: 'DMI', configurable: true },
-  { key: 'highlight', label: '조건 강조', configurable: false }
+  { key: 'highlight', label: '조건 시각화', configurable: false }
 ];
 
 const lineStyleOptions: Array<{ value: LineStyleOption; label: string }> = [
@@ -78,7 +79,6 @@ export function ChartControlPanel() {
     bollinger,
     updateBollinger,
     updateBollingerStyle,
-    updateBollingerHighlight,
     updateBollingerHighlightThreshold,
     rsi,
     updateRsi,
@@ -115,7 +115,6 @@ export function ChartControlPanel() {
     bollinger: state.bollinger,
     updateBollinger: state.updateBollinger,
     updateBollingerStyle: state.updateBollingerStyle,
-    updateBollingerHighlight: state.updateBollingerHighlight,
     updateBollingerHighlightThreshold: state.updateBollingerHighlightThreshold,
     rsi: state.rsi,
     updateRsi: state.updateRsi,
@@ -376,7 +375,7 @@ export function ChartControlPanel() {
                 </div>
                 <div className="space-y-3 rounded border border-zinc-800 bg-zinc-950 p-3">
                   <div className="flex items-center justify-between text-[11px] uppercase tracking-wide text-zinc-500">
-                    <span>조건 강조</span>
+                    <span>조건 시각화</span>
                     <label className="flex items-center gap-2 text-[11px] text-zinc-400">
                       <span>기준 값</span>
                       <select
@@ -579,25 +578,7 @@ export function ChartControlPanel() {
             />
           </label>
           <div className="space-y-3 rounded border border-zinc-800 bg-zinc-950 p-3">
-            <div className="flex items-center justify-between text-[11px] uppercase tracking-wide text-zinc-500">
-              <span>드로잉 조건</span>
-              <label className="flex items-center gap-2 text-[11px] text-zinc-400">
-                <span>기준 값</span>
-                <select
-                  value={bollinger.highlight.candleField}
-                  onChange={(event) =>
-                    updateBollingerHighlight({ candleField: event.target.value as CandleFieldOption })
-                  }
-                  className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-xs text-zinc-100 focus:border-emerald-500 focus:outline-none"
-                >
-                  {candleFieldOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
+            <div className="text-[11px] uppercase tracking-wide text-zinc-500">드로잉 조건</div>
             <div className="grid gap-3 md:grid-cols-2">
               {(
                 [
@@ -607,26 +588,44 @@ export function ChartControlPanel() {
               ).map((item) => {
                 const highlight = bollinger.highlight[item.key];
                 return (
-                  <div key={item.key} className="space-y-2 rounded border border-zinc-800 bg-zinc-900 p-3">
-                    <div className="flex items-center justify-between text-[11px] uppercase tracking-wide text-zinc-500">
-                      <span>{item.title}</span>
-                      <label className="flex items-center gap-2 text-[11px] text-zinc-400">
-                        <input
-                          type="checkbox"
-                          checked={highlight.enabled}
+                    <div key={item.key} className="space-y-2 rounded border border-zinc-800 bg-zinc-900 p-3">
+                      <div className="flex items-center justify-between text-[11px] uppercase tracking-wide text-zinc-500">
+                        <span>{item.title}</span>
+                        <label className="flex items-center gap-2 text-[11px] text-zinc-400">
+                          <input
+                            type="checkbox"
+                            checked={highlight.enabled}
+                            onChange={(event) =>
+                              updateBollingerHighlightThreshold(item.key, { enabled: event.target.checked })
+                            }
+                            className="h-4 w-4 accent-emerald-500"
+                          />
+                          <span>사용</span>
+                        </label>
+                      </div>
+                      <label className="flex flex-col gap-1 text-xs text-zinc-300">
+                        <span>기준 값</span>
+                        <select
+                          value={highlight.field}
                           onChange={(event) =>
-                            updateBollingerHighlightThreshold(item.key, { enabled: event.target.checked })
+                            updateBollingerHighlightThreshold(item.key, {
+                              field: event.target.value as CandleFieldOption
+                            })
                           }
-                          className="h-4 w-4 accent-emerald-500"
-                        />
-                        <span>사용</span>
+                          className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-sm text-zinc-100 focus:border-emerald-500 focus:outline-none"
+                        >
+                          {candleFieldOptions.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
                       </label>
-                    </div>
-                    <label className="flex flex-col gap-1 text-xs text-zinc-300">
-                      <span>표시 라벨</span>
-                      <input
-                        type="text"
-                        value={highlight.label}
+                      <label className="flex flex-col gap-1 text-xs text-zinc-300">
+                        <span>표시 라벨</span>
+                        <input
+                          type="text"
+                          value={highlight.label}
                         onChange={(event) =>
                           updateBollingerHighlightThreshold(item.key, { label: event.target.value })
                         }
