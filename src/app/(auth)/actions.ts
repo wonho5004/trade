@@ -3,6 +3,23 @@
 import { redirect } from 'next/navigation';
 
 import { createSupabaseServerClient, writeAuthCookies, clearAuthCookies } from '@/lib/supabase/server';
+import type { UserRole } from '@/lib/auth/roles';
+import { recordUserActivity } from '@/lib/logs/audit';
+
+const DEFAULT_ROLE: UserRole = 'guest';
+
+async function ensureProfileRecord(userId: string, displayName?: string | null) {
+  const supabase = createSupabaseServerClient('service');
+  const { data } = await supabase.from('profiles').select('id').eq('id', userId).maybeSingle();
+  if (data) {
+    return;
+  }
+  await supabase.from('profiles').insert({
+    id: userId,
+    role: DEFAULT_ROLE,
+    display_name: displayName ?? null
+  });
+}
 
 type AuthActionState = {
   status: 'idle' | 'error' | 'success';
@@ -55,8 +72,18 @@ export async function loginAction(prevState: AuthActionState, formData: FormData
     return { status: 'error', message: profileError.message };
   }
 
-  const role = (profile?.role as string | null) ?? 'user';
+  const role = ((profile?.role as string | null) ?? DEFAULT_ROLE) as UserRole;
+  await ensureProfileRecord(user.id, user.user_metadata?.display_name ?? null);
   writeAuthCookies({ token: session.access_token, role });
+
+  void recordUserActivity({
+    userId: user.id,
+    action: 'login_success',
+    detail: `사용자가 ${redirectTo}로 이동`,
+    actorId: user.id,
+    actorEmail: user.email ?? email,
+    metadata: { redirectTo }
+  });
 
   redirect(redirectTo);
 }
@@ -105,10 +132,27 @@ export async function registerAction(prevState: AuthActionState, formData: FormD
     };
   }
 
+  await ensureProfileRecord(user.id, displayName);
+
   if (data.session?.access_token) {
-    writeAuthCookies({ token: data.session.access_token, role: 'user' });
+    writeAuthCookies({ token: data.session.access_token, role: DEFAULT_ROLE });
+    void recordUserActivity({
+      userId: user.id,
+      action: 'register_and_login',
+      detail: '회원가입 후 자동 로그인',
+      actorId: user.id,
+      actorEmail: user.email ?? email
+    });
     redirect('/dashboard');
   }
+
+  void recordUserActivity({
+    userId: user.id,
+    action: 'register_success',
+    detail: '회원가입 완료',
+    actorId: user.id,
+    actorEmail: user.email ?? email
+  });
 
   return {
     status: 'success',

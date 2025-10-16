@@ -1,8 +1,10 @@
 import Link from 'next/link';
 
 import { logoutAction } from '@/app/(auth)/actions';
+import type { UserRole } from '@/lib/auth/roles';
 import { isRoleAtLeast } from '@/lib/auth/roles';
 import { readAuthCookies } from '@/lib/supabase/server';
+import { getAuthenticatedProfile } from '@/lib/users/profile';
 
 const baseNavItems = [
   { href: '/dashboard', label: '대시보드' },
@@ -10,44 +12,63 @@ const baseNavItems = [
   { href: '/analysis', label: '분석' }
 ];
 
-const navItems = [
-  { href: '/dashboard', label: '대시보드' },
-  { href: '/trading', label: '거래' },
-  { href: '/analysis', label: '분석' }
-];
+const ROLE_LABEL: Record<UserRole, string> = {
+  guest: 'GUEST',
+  member: 'MEMBER',
+  admin: '관리자',
+  sys_admin: '시스템관리자'
+};
 
 export async function AppHeader() {
-  const { token, role } = readAuthCookies();
+  const { token, role: cookieRole } = readAuthCookies();
+  const profileDetails = token ? await getAuthenticatedProfile() : null;
+
+  const normalizedRole = (profileDetails?.profile.role ?? cookieRole ?? 'guest') as UserRole;
+  const nickname = profileDetails?.displayNickname ?? profileDetails?.email ?? '게스트';
+
   const isAuthenticated = Boolean(token);
   const navItems = [...baseNavItems];
 
-  if (isRoleAtLeast(role, 'admin')) {
+  if (isAuthenticated) {
+    navItems.push({ href: '/mypage', label: '마이페이지' });
+  }
+  if (isRoleAtLeast(normalizedRole, 'admin')) {
     navItems.push({ href: '/admin', label: '관리자' });
   }
-  if (isRoleAtLeast(role, 'sys_admin')) {
+  if (isRoleAtLeast(normalizedRole, 'sys_admin')) {
     navItems.push({ href: '/ops', label: '시스템' });
   }
 
   return (
-    <header className="flex items-center justify-between border-b border-zinc-800 px-6 py-4">
-      <Link href="/" className="text-lg font-semibold text-zinc-100">
-        Binance Trader
-      </Link>
-      <nav className="flex items-center gap-6 text-sm text-zinc-400">
-        {navItems.map((item) => (
-          <Link key={item.href} href={item.href} className="transition hover:text-zinc-100">
-            {item.label}
-          </Link>
-        ))}
+    <header className="flex items-center justify-between border-b border-zinc-800 px-6 py-3">
+      <div className="flex items-center gap-6">
+        <Link href="/" className="text-lg font-semibold text-zinc-100">
+          Binance Trader
+        </Link>
+        <nav className="flex items-center gap-4 text-sm text-zinc-400">
+          {navItems.map((item) => (
+            <Link key={item.href} href={item.href} className="transition hover:text-zinc-100">
+              {item.label}
+            </Link>
+          ))}
+        </nav>
+      </div>
+      <div className="flex items-center gap-4">
         {isAuthenticated ? (
-          <form action={logoutAction}>
-            <button
-              type="submit"
-              className="rounded border border-zinc-700 px-3 py-1 text-xs font-medium text-zinc-300 transition hover:border-emerald-500 hover:text-emerald-300"
-            >
-              로그아웃
-            </button>
-          </form>
+          <>
+            <div className="flex flex-col items-end leading-tight">
+              <span className="text-sm font-semibold text-zinc-100">{nickname}</span>
+              <span className="text-[11px] text-emerald-400">{ROLE_LABEL[normalizedRole]}</span>
+            </div>
+            <form action={logoutAction}>
+              <button
+                type="submit"
+                className="rounded border border-zinc-700 px-3 py-1 text-xs font-medium text-zinc-300 transition hover:border-emerald-500 hover:text-emerald-300"
+              >
+                로그아웃
+              </button>
+            </form>
+          </>
         ) : (
           <Link
             href="/login"
@@ -56,7 +77,7 @@ export async function AppHeader() {
             로그인
           </Link>
         )}
-      </nav>
+      </div>
     </header>
   );
 }

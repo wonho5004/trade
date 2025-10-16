@@ -2,12 +2,13 @@ import { redirect } from 'next/navigation';
 
 import { readAuthCookies } from '@/lib/supabase/server';
 
-export type UserRole = 'user' | 'admin' | 'sys_admin';
+export type UserRole = 'guest' | 'member' | 'admin' | 'sys_admin';
 
 const ROLE_WEIGHT: Record<UserRole, number> = {
-  user: 1,
-  admin: 2,
-  sys_admin: 3
+  guest: 1,
+  member: 2,
+  admin: 3,
+  sys_admin: 4
 };
 
 export function isRoleAtLeast(role: UserRole | null | undefined, required: UserRole) {
@@ -33,7 +34,7 @@ export async function requireAuthenticatedUser(nextUrl?: string) {
     redirect(target.pathname + target.search);
   }
 
-  return { token, role: (role ?? 'user') as UserRole };
+  return { token, role: (role ?? 'guest') as UserRole };
 }
 
 export async function requireRole(required: UserRole, nextUrl?: string) {

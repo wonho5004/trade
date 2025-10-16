@@ -1,0 +1,267 @@
+import { createSupabaseServerClient, readAuthCookies } from '@/lib/supabase/server';
+import type { Database } from '@/types/supabase';
+import type { UserRole } from '@/lib/auth/roles';
+
+type ProfilesTable = Database['public']['Tables']['profiles'];
+export type ProfileRow = ProfilesTable['Row'];
+
+const DEFAULT_ROLE: UserRole = 'guest';
+
+export type ProfileDetails = {
+  profile: ProfileRow;
+  email: string;
+  displayFullName: string | null;
+  displayNickname: string;
+  hasNickname: boolean;
+  hasPhone: boolean;
+  phone: string | null;
+  binanceApiKey: string | null;
+  binanceApiSecret: string | null;
+};
+
+export type UserSummary = {
+  id: string;
+  email: string;
+  displayName: string | null;
+  nickname: string | null;
+  phone: string | null;
+  role: UserRole;
+  createdAt: string | null;
+  updatedAt: string | null;
+};
+
+function normalize(value: unknown): string | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function deriveFullName(meta: Record<string, unknown> | null | undefined, email: string): string | null {
+  const candidate =
+    normalize(meta?.full_name) ??
+    normalize(meta?.display_name) ??
+    normalize(meta?.name);
+  if (candidate) {
+    return candidate;
+  }
+  if (email) {
+    const localPart = email.split('@')[0];
+    return localPart || null;
+  }
+  return null;
+}
+
+function deriveNickname(
+  displayName: string | null,
+  meta: Record<string, unknown> | null | undefined,
+  email: string
+): string {
+  return (
+    normalize(meta?.nickname) ??
+    normalize(meta?.display_name) ??
+    displayName ??
+    (email ? email.split('@')[0] : null) ??
+    '게스트'
+  );
+}
+
+function buildFallbackDetails(user: { id: string; email: string | null; user_metadata: Record<string, unknown> | null }): ProfileDetails {
+  const email = user.email ?? '';
+  const displayFullName = deriveFullName(user.user_metadata, email);
+  const nicknameValue = normalize(user.user_metadata?.nickname);
+  const displayNickname = deriveNickname(displayFullName, user.user_metadata, email);
+  const phone = normalize(user.user_metadata?.phone);
+  const now = new Date().toISOString();
+
+  const profile: ProfileRow = {
+    id: user.id,
+    role: DEFAULT_ROLE,
+    display_name: displayFullName,
+    created_at: now,
+    updated_at: now
+  };
+
+  return {
+    profile,
+    email,
+    displayFullName,
+    displayNickname,
+    hasNickname: Boolean(nicknameValue),
+    hasPhone: Boolean(phone),
+    phone,
+    binanceApiKey: normalize(user.user_metadata?.binance_api_key),
+    binanceApiSecret: normalize(user.user_metadata?.binance_api_secret)
+  };
+}
+
+export async function getAuthenticatedProfile(): Promise<ProfileDetails | null> {
+  const { token } = readAuthCookies();
+  if (!token) {
+    return null;
+  }
+
+  let supabase;
+  try {
+    supabase = createSupabaseServerClient('service');
+  } catch (error) {
+    console.error('[profile] failed to create supabase client', error);
+    return null;
+  }
+
+  const { data: userData, error: userError } = await supabase.auth.getUser(token);
+  if (userError || !userData?.user) {
+    return null;
+  }
+
+  const user = userData.user;
+  const email = user.email ?? '';
+
+  try {
+    const { data: existingProfile } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', user.id)
+      .maybeSingle();
+
+    const now = new Date().toISOString();
+    const displayFullName = deriveFullName(user.user_metadata, email);
+    const nicknameValue = normalize(user.user_metadata?.nickname);
+    const displayNickname = deriveNickname(displayFullName, user.user_metadata, email);
+    const phone = normalize(user.user_metadata?.phone);
+
+    let profileRecord: ProfileRow;
+
+    if (!existingProfile) {
+      const insertPayload: ProfilesTable['Insert'] = {
+        id: user.id,
+        role: DEFAULT_ROLE,
+        display_name: displayFullName,
+        created_at: now,
+        updated_at: now
+      };
+      const { data: inserted, error: insertError } = await supabase
+        .from('profiles')
+        .insert(insertPayload)
+        .select('*')
+        .maybeSingle();
+      if (insertError || !inserted) {
+        return buildFallbackDetails(user);
+      }
+      profileRecord = inserted;
+    } else {
+      profileRecord = existingProfile;
+      if (!normalize(profileRecord.display_name) && displayFullName) {
+        const { data: updated } = await supabase
+          .from('profiles')
+          .update({ display_name: displayFullName, updated_at: now })
+          .eq('id', user.id)
+          .select('*')
+          .maybeSingle();
+        if (updated) {
+          profileRecord = updated;
+        }
+      }
+    }
+
+    const sanitizedProfile: ProfileRow = {
+      id: profileRecord.id,
+      role: (profileRecord.role ?? DEFAULT_ROLE) as UserRole,
+      display_name: normalize(profileRecord.display_name),
+      created_at: profileRecord.created_at ?? null,
+      updated_at: profileRecord.updated_at ?? null
+    };
+
+    return {
+      profile: sanitizedProfile,
+      email,
+      displayFullName: displayFullName ?? sanitizedProfile.display_name,
+      displayNickname,
+      hasNickname: Boolean(nicknameValue),
+      hasPhone: Boolean(phone),
+      phone,
+      binanceApiKey: normalize(user.user_metadata?.binance_api_key),
+      binanceApiSecret: normalize(user.user_metadata?.binance_api_secret)
+    };
+  } catch (error) {
+    console.error('[profile] failed to resolve profile', error);
+    return buildFallbackDetails(user);
+  }
+}
+
+export async function listAllProfiles(): Promise<UserSummary[]> {
+  const supabase = createSupabaseServerClient('service');
+
+  const profileMap = new Map<string, ProfileRow>();
+  const { data: profileData } = await supabase.from('profiles').select('*');
+  if (profileData) {
+    for (const row of profileData) {
+      profileMap.set(row.id, row);
+    }
+  }
+
+  const summaries: UserSummary[] = [];
+  const { data: usersData } = await supabase.auth.admin.listUsers({ perPage: 1000 });
+
+  if (usersData?.users) {
+    for (const user of usersData.users) {
+      const profileRow = profileMap.get(user.id);
+      const metadata = (user.user_metadata ?? {}) as Record<string, unknown>;
+      const email = user.email ?? '';
+      const displayName = normalize(profileRow?.display_name) ?? deriveFullName(metadata, email);
+      const nickname = deriveNickname(displayName, metadata, email);
+      const phone = normalize(metadata.phone ?? metadata.phone_number);
+      const role = (profileRow?.role as UserRole | undefined) ?? DEFAULT_ROLE;
+
+      summaries.push({
+        id: user.id,
+        email,
+        displayName,
+        nickname,
+        phone,
+        role,
+        createdAt: profileRow?.created_at ?? user.created_at ?? null,
+        updatedAt: profileRow?.updated_at ?? user.updated_at ?? null
+      });
+      profileMap.delete(user.id);
+    }
+  }
+
+  for (const [id, row] of profileMap.entries()) {
+    const email = '';
+    const displayName = normalize(row.display_name) ?? null;
+    const nickname = displayName;
+    summaries.push({
+      id,
+      email,
+      displayName,
+      nickname,
+      phone: null,
+      role: (row.role as UserRole | undefined) ?? DEFAULT_ROLE,
+      createdAt: row.created_at ?? null,
+      updatedAt: row.updated_at ?? null
+    });
+  }
+
+  summaries.sort((a, b) => {
+    const aName = a.displayName ?? a.nickname ?? a.email;
+    const bName = b.displayName ?? b.nickname ?? b.email;
+    return aName.localeCompare(bName);
+  });
+
+  return summaries;
+}
+
+export async function updateProfileById(id: string, payload: ProfilesTable['Update']) {
+  const supabase = createSupabaseServerClient('service');
+  const { error } = await supabase
+    .from('profiles')
+    .update({ ...payload, updated_at: new Date().toISOString() })
+    .eq('id', id);
+  return { error };
+}
+
+export async function changeUserRole(id: string, role: UserRole) {
+  return updateProfileById(id, { role });
+}
