@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import type { Route } from 'next';
 
 import { requireRole } from '@/lib/auth/roles';
 
@@ -16,14 +17,14 @@ export default async function AdminPage() {
       </div>
       <section className="grid gap-4 md:grid-cols-2">
         <Link
-          href="/admin/users"
+          href={'/admin/users' as Route}
           className="rounded-lg border border-zinc-800 bg-zinc-900 p-5 transition hover:border-emerald-500"
         >
           <h2 className="text-lg font-semibold text-zinc-100">사용자 관리</h2>
           <p className="mt-2 text-sm text-zinc-400">Supabase 프로필과 권한을 확인·조정합니다.</p>
         </Link>
         <Link
-          href="/admin/audit"
+          href={'/admin/audit' as Route}
           className="rounded-lg border border-zinc-800 bg-zinc-900 p-5 transition hover:border-emerald-500"
         >
           <h2 className="text-lg font-semibold text-zinc-100">감사 로그</h2>

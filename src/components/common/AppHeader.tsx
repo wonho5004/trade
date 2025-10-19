@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import type { Route } from 'next';
 
 import { logoutAction } from '@/app/(auth)/actions';
 import type { UserRole } from '@/lib/auth/roles';
@@ -6,9 +7,10 @@ import { isRoleAtLeast } from '@/lib/auth/roles';
 import { readAuthCookies } from '@/lib/supabase/server';
 import { getAuthenticatedProfile } from '@/lib/users/profile';
 
-const baseNavItems = [
+const baseNavItems: Array<{ href: Route; label: string }> = [
   { href: '/dashboard', label: '대시보드' },
   { href: '/trading', label: '거래' },
+  { href: '/trading/automation', label: '자동매매설정' },
   { href: '/analysis', label: '분석' }
 ];
 
@@ -30,19 +32,19 @@ export async function AppHeader() {
   const navItems = [...baseNavItems];
 
   if (isAuthenticated) {
-    navItems.push({ href: '/mypage', label: '마이페이지' });
+    navItems.push({ href: '/mypage', label: '마이페이지' } as { href: Route; label: string });
   }
   if (isRoleAtLeast(normalizedRole, 'admin')) {
-    navItems.push({ href: '/admin', label: '관리자' });
+    navItems.push({ href: '/admin', label: '관리자' } as { href: Route; label: string });
   }
   if (isRoleAtLeast(normalizedRole, 'sys_admin')) {
-    navItems.push({ href: '/ops', label: '시스템' });
+    navItems.push({ href: '/ops', label: '시스템' } as { href: Route; label: string });
   }
 
   return (
     <header className="flex items-center justify-between border-b border-zinc-800 px-6 py-3">
       <div className="flex items-center gap-6">
-        <Link href="/" className="text-lg font-semibold text-zinc-100">
+        <Link href={'/' as Route} className="text-lg font-semibold text-zinc-100">
           Binance Trader
         </Link>
         <nav className="flex items-center gap-4 text-sm text-zinc-400">
@@ -71,7 +73,7 @@ export async function AppHeader() {
           </>
         ) : (
           <Link
-            href="/login"
+            href={'/login' as Route}
             className="rounded border border-emerald-500 px-3 py-1 text-xs font-semibold text-emerald-300 transition hover:bg-emerald-500/10"
           >
             로그인

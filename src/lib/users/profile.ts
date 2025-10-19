@@ -67,7 +67,7 @@ function deriveNickname(
   );
 }
 
-function buildFallbackDetails(user: { id: string; email: string | null; user_metadata: Record<string, unknown> | null }): ProfileDetails {
+function buildFallbackDetails(user: { id: string; email: string | null | undefined; user_metadata: Record<string, unknown> | null }): ProfileDetails {
   const email = user.email ?? '';
   const displayFullName = deriveFullName(user.user_metadata, email);
   const nicknameValue = normalize(user.user_metadata?.nickname);
@@ -147,7 +147,7 @@ export async function getAuthenticatedProfile(): Promise<ProfileDetails | null> 
         .select('*')
         .maybeSingle();
       if (insertError || !inserted) {
-        return buildFallbackDetails(user);
+        return buildFallbackDetails({ id: user.id, email: user.email ?? null, user_metadata: (user.user_metadata ?? null) as Record<string, unknown> | null });
       }
       profileRecord = inserted;
     } else {
@@ -186,7 +186,7 @@ export async function getAuthenticatedProfile(): Promise<ProfileDetails | null> 
     };
   } catch (error) {
     console.error('[profile] failed to resolve profile', error);
-    return buildFallbackDetails(user);
+    return buildFallbackDetails({ id: user.id, email: user.email ?? null, user_metadata: (user.user_metadata ?? null) as Record<string, unknown> | null });
   }
 }
 

@@ -110,7 +110,7 @@ export function calculateMACD(candles: Candle[], shortPeriod = 12, longPeriod = 
   });
 
   const macdValues = macdLine.map((value) => (value == null ? null : value));
-  const signalLine = calculateEMA(macdValues, signalPeriod);
+  const signalLine = calculateEMA(macdValues as unknown as number[], signalPeriod);
   const histogram = macdLine.map((value, index) => {
     const signal = signalLine[index];
     if (value == null || signal == null) {

@@ -93,7 +93,7 @@ export async function bootstrapAdminAccountAction(
     const adminEmail = 'admin@system.local';
     const adminPassword = 'btc1234';
 
-    const { data: existingUsers } = await supabase.auth.admin.listUsers({ email: adminEmail });
+    const { data: existingUsers } = await supabase.auth.admin.listUsers({ perPage: 1000 });
     const existingUser = existingUsers?.users?.find((item) => item.email === adminEmail) ?? null;
 
     if (existingUser) {

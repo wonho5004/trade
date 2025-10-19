@@ -2,7 +2,7 @@ import ccxt from 'ccxt';
 
 import type { ExchangeCredentials } from '@/types/trading';
 
-export type BinanceFuturesClient = ccxt.binanceusdm;
+export type BinanceFuturesClient = ReturnType<typeof createBinanceFuturesClient>;
 
 export function createBinanceFuturesClient(credentials?: Partial<ExchangeCredentials>) {
   const client = new ccxt.binanceusdm({
@@ -21,7 +21,7 @@ export function createBinanceFuturesClient(credentials?: Partial<ExchangeCredent
   }
 
   if (credentials?.password ?? process.env.BINANCE_FUTURES_API_PASSWORD) {
-    client.password = credentials?.password ?? process.env.BINANCE_FUTURES_API_PASSWORD;
+    client.password = credentials?.password ?? process.env.BINANCE_FUTURES_API_PASSWORD ?? '';
   }
 
   return client;

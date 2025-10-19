@@ -19,6 +19,8 @@ type MarketDataState = {
   setTicker: (update: TickerUpdate) => void;
   setError: (message: string) => void;
   attach: (symbol: string) => () => void;
+  beginConnection: (symbol: string) => () => void;
+  reset: () => void;
 };
 
 const baseState = {
@@ -143,5 +145,11 @@ export const useMarketDataStore = create<MarketDataState>((set, get) => ({
         set((prev) => ({ ...prev, listeners: nextListeners }));
       }
     };
+  },
+  beginConnection: (symbol: string) => get().attach(symbol),
+  reset: () => {
+    const state = get();
+    state.cleanup?.();
+    set(() => ({ ...baseState }));
   }
 }));

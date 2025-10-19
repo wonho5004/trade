@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import type { Route } from 'next';
 
 import { requireRole } from '@/lib/auth/roles';
 import { listAllProfiles } from '@/lib/users/profile';
@@ -40,7 +41,7 @@ export default async function OpsPage() {
   );
 }
 
-function NavLink({ href, label }: { href: string; label: string }) {
+function NavLink({ href, label }: { href: Route; label: string }) {
   return (
     <Link
       href={href}

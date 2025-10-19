@@ -36,9 +36,9 @@ function resolveSupabaseKey(role: ClientRole) {
   return { url, key: anon };
 }
 
-export function createSupabaseServerClient(role: ClientRole = 'anon'): SupabaseClient<Database> {
+export function createSupabaseServerClient(role: ClientRole = 'anon'): SupabaseClient<any> {
   const { url, key } = resolveSupabaseKey(role);
-  return createClient<Database>(url, key, {
+  return createClient<Database, 'public'>(url, key, {
     auth: {
       persistSession: false,
       autoRefreshToken: false

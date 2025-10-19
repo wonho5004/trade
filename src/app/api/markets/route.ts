@@ -1,31 +1,55 @@
 import { NextResponse } from 'next/server';
 
 import { fetchTrendingMarkets } from '@/lib/trading/markets';
-import type { QuoteCurrency } from '@/types/assets';
+import type { QuoteCurrency, TickerInfo } from '@/types/assets';
 
-export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const quote = (searchParams.get('quote')?.toUpperCase() ?? 'USDT') as QuoteCurrency;
-  const search = searchParams.get('search') ?? undefined;
+type SortMode = 'volume' | 'changeUp' | 'changeDown' | 'alphabet' | 'tradeValue';
+
+type CacheKey = `${QuoteCurrency}:${SortMode}`;
+
+const TTL_MS = 60 * 1000;
+const cache: Map<CacheKey, { items: TickerInfo[]; ts: number }> = new Map();
+
+function getCache(quote: QuoteCurrency, sort: SortMode) {
+  const key: CacheKey = `${quote}:${sort}`;
+  const hit = cache.get(key);
+  if (hit && Date.now() - hit.ts < TTL_MS) return hit.items;
+  return null;
+}
+
+function setCache(quote: QuoteCurrency, sort: SortMode, items: TickerInfo[]) {
+  const key: CacheKey = `${quote}:${sort}`;
+  cache.set(key, { items, ts: Date.now() });
+}
+
+export async function GET(req: Request) {
+  const url = new URL(req.url);
+  const search = (url.searchParams.get('search') || '').trim();
+  const quote = (url.searchParams.get('quote') || 'USDT').toUpperCase() as QuoteCurrency;
+  const sort = (url.searchParams.get('sort') || 'volume') as SortMode;
+
+  const allowedQuotes: QuoteCurrency[] = ['USDT', 'USDC'];
+  const safeQuote = allowedQuotes.includes(quote) ? quote : 'USDT';
+  const allowedSort: SortMode[] = ['volume', 'changeUp', 'changeDown', 'alphabet', 'tradeValue'];
+  const safeSort = allowedSort.includes(sort) ? sort : 'volume';
 
   try {
-    const sort = (searchParams.get('sort') ?? 'volume') as
-      | 'volume'
-      | 'changeUp'
-      | 'changeDown'
-      | 'alphabet'
-      | 'tradeValue';
-    const markets = await fetchTrendingMarkets(search, quote, sort);
-    const filtered = markets.filter((item) => item.quote === quote);
+    let items = getCache(safeQuote, safeSort);
+    if (!items) {
+      items = await fetchTrendingMarkets(search ? undefined : undefined, safeQuote, safeSort);
+      setCache(safeQuote, safeSort, items);
+    }
 
-    return NextResponse.json(
-      { items: filtered },
-      {
-        headers: { 'Cache-Control': 'no-store' }
-      }
-    );
+    let filtered = items;
+    if (search) {
+      const q = search.toUpperCase().replace(/[^A-Z0-9]/g, '');
+      filtered = items.filter((it) => it.symbol.includes(q) || it.base.includes(q));
+    }
+
+    return NextResponse.json({ items: filtered.slice(0, 200) }, { status: 200 });
   } catch (error) {
-    console.error('[markets route] fetch error', error);
-    return NextResponse.json({ message: 'Binance 마켓 데이터를 가져오지 못했습니다.' }, { status: 502 });
+    console.error('[api/markets] failed', error);
+    return NextResponse.json({ items: [] }, { status: 200 });
   }
 }
+

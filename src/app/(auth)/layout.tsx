@@ -3,9 +3,10 @@
 import type { ReactNode } from 'react';
 
 import Link from 'next/link';
+import type { Route } from 'next';
 import { usePathname } from 'next/navigation';
 
-const links = [
+const links: Array<{ href: Route; label: string }> = [
   { href: '/login', label: '로그인' },
   { href: '/register', label: '회원가입' }
 ];
@@ -15,7 +16,7 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-zinc-950 px-4 py-10 text-zinc-100">
       <header className="mb-6 flex flex-col items-center gap-2">
-        <Link href="/" className="text-2xl font-semibold text-emerald-400">
+        <Link href={'/' as Route} className="text-2xl font-semibold text-emerald-400">
           Binance Trader
         </Link>
         <nav className="flex gap-3 text-xs uppercase text-zinc-500">

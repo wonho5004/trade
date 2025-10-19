@@ -31,6 +31,11 @@ describe('useMarketDataStore', () => {
 
   it('updates ticker data and status on setTicker', () => {
     act(() => {
+      useMarketDataStore.setState((prev) => ({
+        ...prev,
+        symbol: sampleTicker.symbol,
+        status: 'connecting'
+      }));
       useMarketDataStore.getState().setTicker(sampleTicker);
     });
 

@@ -1,4 +1,5 @@
 import type { QuoteCurrency, TickerInfo } from '@/types/assets';
+type BinanceExchangeInfo = { symbols: Array<{ symbol: string; contractType?: string; status?: string; onboardDate?: number }>; };
 
 const SUPPORTED_QUOTES: QuoteCurrency[] = ['USDT', 'USDC'];
 
@@ -69,6 +70,7 @@ export async function fetchTrendingMarkets(
 ): Promise<TickerInfo[]> {
   let rawTickers: BinanceTickerResponse[] = FALLBACK_TICKERS;
   let validSymbols: Set<string> = FALLBACK_FUTURES_SET;
+  const listingAgeMap: Map<string, number | null> = new Map();
 
   try {
     const response = await fetch(BINANCE_FUTURES_TICKER_URL, { cache: 'no-store' });
@@ -88,12 +90,22 @@ export async function fetchTrendingMarkets(
     });
     if (infoResponse.ok) {
       const info = (await infoResponse.json()) as BinanceExchangeInfo;
+      const now = Date.now();
       const perpetual = info.symbols
         .filter((item) => item.contractType === 'PERPETUAL' && item.status === 'TRADING')
-        .map((item) => item.symbol);
+        .map((item) => ({ symbol: item.symbol, onboardDate: item.onboardDate }));
       if (perpetual.length > 0) {
-        validSymbols = new Set(perpetual);
+        validSymbols = new Set(perpetual.map((p) => p.symbol));
       }
+      // Attach listing age to fallback tickers when possible
+      for (const p of perpetual) {
+        const days = typeof p.onboardDate === 'number' && p.onboardDate > 0 ? Math.floor((now - p.onboardDate) / (24 * 60 * 60 * 1000)) : null;
+        listingAgeMap.set(p.symbol, days);
+      }
+      // decorate FALLBACK_TICKERS ages (optional)
+      FALLBACK_TICKERS.forEach((t) => {
+        if (!listingAgeMap.has(t.symbol)) listingAgeMap.set(t.symbol, null);
+      });
     }
   } catch (error) {
     console.warn('[markets] exchangeInfo fetch failed, falling back to static list', error);
@@ -142,5 +154,32 @@ export async function fetchTrendingMarkets(
 
   return sorted
     .slice(0, 500)
-    .map(({ score: _score, direction: _direction, ...rest }) => rest);
+    .map(({ score: _score, direction: _direction, ...rest }) => ({
+      ...rest,
+      listedDays: listingAgeMap.get(rest.symbol) ?? null
+    }));
+}
+
+// Returns a Set of tradable perpetual symbols (e.g., BTCUSDT)
+export async function fetchPerpetualSymbolSet(): Promise<Set<string>> {
+  let validSymbols: Set<string> = FALLBACK_FUTURES_SET;
+  try {
+    const infoResponse = await fetch('https://fapi.binance.com/fapi/v1/exchangeInfo', {
+      cache: 'force-cache'
+    });
+    if (infoResponse.ok) {
+      const info = (await infoResponse.json()) as any;
+      const perpetual = Array.isArray(info?.symbols)
+        ? info.symbols
+            .filter((item: any) => item.contractType === 'PERPETUAL' && item.status === 'TRADING')
+            .map((item: any) => String(item.symbol))
+        : [];
+      if (perpetual.length > 0) {
+        validSymbols = new Set(perpetual);
+      }
+    }
+  } catch (error) {
+    console.warn('[markets] exchangeInfo fetch failed for symbol set, falling back to static list', error);
+  }
+  return validSymbols;
 }
