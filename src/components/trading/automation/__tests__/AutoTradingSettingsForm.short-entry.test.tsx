@@ -35,44 +35,41 @@ describe('AutoTradingSettingsForm – short entry indicators', () => {
 
     await waitFor(() => expect(mockFetch).toHaveBeenCalled());
 
-    const entrySectionToggle = screen.getByRole('button', { name: /포지션 진입\(매수\) 설정/ });
+    const entrySectionToggle = screen.getByRole('button', { name: /진입\(매수\) 설정/ });
     await user.click(entrySectionToggle);
 
-    const shortTab = screen.getByRole('tab', { name: /숏/ });
-    await user.click(shortTab);
+    // 섹션 컨테이너 범위를 좁혀서 조회
+    const entrySection = entrySectionToggle.closest('section')!;
+    const entryWithin = within(entrySection);
 
-    const shortPanel = document.getElementById('entry-panel-short');
-    expect(shortPanel).not.toBeNull();
+    // 숏 패널에서 ‘조건 그룹 추가’ 클릭 (두 패널 중 두 번째 버튼 선택)
+    const addGroupButtons = entryWithin.getAllByRole('button', { name: '조건 그룹 추가' });
+    await user.click(addGroupButtons[addGroupButtons.length - 1]);
 
-    const panel = within(shortPanel!);
-    const enableShortEntry = panel.getByLabelText('숏 매수 사용');
-    await user.click(enableShortEntry);
+    // 그룹 편집 열기(숏 패널 쪽 버튼 선택)
+    const editGroupButtons = entryWithin.getAllByRole('button', { name: '그룹 편집' });
+    await user.click(editGroupButtons[editGroupButtons.length - 1]);
 
-    const addButton = panel.getByRole('button', { name: '조건 추가' });
-    await user.click(addButton);
+    // 모달에서 지표 추가: 볼린저 밴드 선택 후 추가 → 저장
+    const bollingerOpt = await screen.findByRole('option', { name: '볼린저 밴드' });
+    const indicatorSelect = bollingerOpt.parentElement as HTMLSelectElement;
+    await user.selectOptions(indicatorSelect, 'bollinger');
+    const addButtons = screen.getAllByRole('button', { name: '추가' });
+    await user.click(addButtons[0]);
+    const dialog = screen.getByRole('dialog');
+    const saveButton = within(dialog).getByRole('button', { name: '저장' });
+    await user.click(saveButton);
 
-    await screen.findByText('지표 선택');
-
-    const bollingerOption = await screen.findByRole('button', { name: /볼린저 밴드/ });
-    await user.click(bollingerOption);
+    // 스토어에 숏 엔트리 지표가 추가되었는지 확인
     await waitFor(() => {
       expect(useAutoTradingSettingsStore.getState().settings.entry.short.indicators.entries.length).toBeGreaterThan(0);
     });
 
-    const indicatorModalTitle = await screen.findByText('볼린저 밴드 조건 편집');
-    const modalHeader = indicatorModalTitle.closest('header');
-    const closeButton = modalHeader?.querySelector('button');
-    if (!closeButton) {
-      throw new Error('조건 편집 모달 닫기 버튼을 찾을 수 없습니다.');
-    }
-    await user.click(closeButton);
-
-    const editButtons = panel.getAllByRole('button', { name: '조건 편집' });
-    await user.click(editButtons[0]);
-
-    expect(await screen.findByText('볼린저 밴드 조건 편집')).toBeInTheDocument();
-
-    expect(screen.getByRole('button', { name: /조건 중 하나 이상/ })).toBeInTheDocument();
+    // 숏 패널에서 ‘지표 편집’ 버튼 클릭하여 편집 모달이 뜨는지 확인
+    const indicatorEditButtons = entryWithin.getAllByRole('button', { name: '지표 편집' });
+    await user.click(indicatorEditButtons[indicatorEditButtons.length - 1]);
+    const indicatorDialog = await screen.findByRole('dialog');
+    expect(within(indicatorDialog).getByText('지표 편집')).toBeInTheDocument();
   });
 });
 // @ts-nocheck

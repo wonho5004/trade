@@ -69,7 +69,8 @@ export const createBollingerCondition = (): IndicatorConfigMap['bollinger'] => (
   standardDeviation: 2,
   offset: 0,
   band: 'middle',
-  action: 'touch'
+  action: 'touch',
+  touchTolerancePct: 0.2
 });
 
 export const createMaCondition = (): IndicatorConfigMap['ma'] => ({
@@ -361,6 +362,7 @@ export const createSymbolSelection = (): SymbolSelection => ({
     top_losers: null
   },
   excludedSymbols: [],
+  excludedReasons: {},
   respectDefaultExclusions: true,
   leverageMode: 'uniform',
   leverageOverrides: {},

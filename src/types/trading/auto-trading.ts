@@ -46,6 +46,8 @@ export type BollingerCondition = {
   offset: number;
   band: BollingerBand;
   action: BollingerAction;
+  /** 'touch' 판단 허용 오차(%) — 예: 0.2 -> 0.2% */
+  touchTolerancePct?: number;
 };
 
 export type MaAction = 'break_above' | 'break_below' | 'stay_above' | 'stay_below';
@@ -162,6 +164,19 @@ export type CandleLeafNode = {
   candle: CandleCondition;
 };
 
+// Status condition leaf: describes runtime position/account metrics
+export type StatusMetric = 'profitRate' | 'margin' | 'buyCount' | 'entryAge';
+export type StatusUnit = 'percent' | 'USDT' | 'USDC' | 'count' | 'days';
+
+export type StatusLeafNode = {
+  kind: 'status';
+  id: string;
+  metric: StatusMetric;
+  comparator: ComparisonOperator;
+  value: number;
+  unit?: StatusUnit;
+};
+
 export type ConditionGroupNode = {
   kind: 'group';
   id: string;
@@ -169,7 +184,7 @@ export type ConditionGroupNode = {
   children: ConditionNode[];
 };
 
-export type ConditionNode = ConditionGroupNode | IndicatorLeafNode | CandleLeafNode;
+export type ConditionNode = ConditionGroupNode | IndicatorLeafNode | CandleLeafNode | StatusLeafNode;
 
 export type IndicatorConditions = {
   root: ConditionGroupNode;
@@ -321,6 +336,8 @@ export type SymbolSelection = {
   manualSymbols: string[];
   ranking: RankingCriteria;
   excludedSymbols: string[];
+  /** 제외 사유(자동선택/필터 등) 저장용 */
+  excludedReasons?: Record<string, string>;
   respectDefaultExclusions: boolean;
   leverageMode: LeverageMode;
   leverageOverrides: Record<string, number>;

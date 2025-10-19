@@ -307,6 +307,19 @@ const normalizeNode = (legacyNode: unknown, fallbackId: string): ConditionNode |
       : createCandleCondition();
     return createCandleLeaf(candle);
   }
+  if (kind === 'status') {
+    // Pass-through for status nodes; basic sanitization only
+    const metric = (legacyNode as PlainObject).metric;
+    const comparator = (legacyNode as PlainObject).comparator;
+    const value = (legacyNode as PlainObject).value;
+    const unit = (legacyNode as PlainObject).unit;
+    const id = typeof (legacyNode as PlainObject).id === 'string' ? ((legacyNode as PlainObject).id as string) : fallbackId;
+    const supportedMetric = metric === 'profitRate' || metric === 'margin' || metric === 'buyCount' || metric === 'entryAge' ? metric : 'profitRate';
+    const cmp = isComparisonOperator(comparator) ? comparator : 'over';
+    const val = typeof value === 'number' && Number.isFinite(value) ? value : 0;
+    const validUnit = unit === 'percent' || unit === 'USDT' || unit === 'USDC' || unit === 'count' || unit === 'days' ? unit : undefined;
+    return { kind: 'status', id, metric: supportedMetric, comparator: cmp, value: val, unit: validUnit } as unknown as ConditionNode;
+  }
   return null;
 };
 
@@ -495,6 +508,15 @@ const normalizeSymbolSelection = (legacy: unknown): SymbolSelection => {
   merged.excludedSymbols = Array.isArray(merged.excludedSymbols)
     ? merged.excludedSymbols.filter((symbol): symbol is string => typeof symbol === 'string')
     : [];
+  // excludedReasons sanitize
+  const reasons: Record<string, string> = {};
+  const rec = (legacy as PlainObject).excludedReasons;
+  if (isPlainObject(rec)) {
+    Object.entries(rec).forEach(([k, v]) => {
+      if (typeof v === 'string') reasons[k.toUpperCase()] = v;
+    });
+  }
+  merged.excludedReasons = reasons;
   const leverageModeCandidate = (legacy as PlainObject).leverageMode;
   merged.leverageMode = leverageModeCandidate === 'custom' ? 'custom' : 'uniform';
   const overridesCandidate = (legacy as PlainObject).leverageOverrides;

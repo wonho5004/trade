@@ -152,9 +152,7 @@ export async function fetchTrendingMarkets(
     return b.volume - a.volume;
   });
 
-  return sorted
-    .slice(0, 500)
-    .map(({ score: _score, direction: _direction, ...rest }) => ({
+  return sorted.map(({ score: _score, direction: _direction, ...rest }) => ({
       ...rest,
       listedDays: listingAgeMap.get(rest.symbol) ?? null
     }));

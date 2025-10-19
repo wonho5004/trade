@@ -2,18 +2,23 @@
 
 import { useMemo, useState } from 'react';
 
-import type { ConditionGroupNode, ConditionNode, IndicatorConditions, IndicatorLeafNode } from '@/types/trading/auto-trading';
+import type { ConditionGroupNode, ConditionNode, IndicatorConditions, IndicatorLeafNode, StatusLeafNode } from '@/types/trading/auto-trading';
 import { createIndicatorGroup, normalizeConditionTree } from '@/lib/trading/autoTradingDefaults';
 import { collectGroupNodes, collectIndicatorNodes, ensureGroup, insertChild, removeNode } from '@/lib/trading/conditionsTree';
 import { IndicatorEditModal } from './IndicatorEditModal';
+import { normalizeSymbol as normalizePreviewSymbol } from '@/lib/trading/symbols';
+import { useSymbolValidation } from '@/hooks/useSymbolValidation';
+import { ConditionsPreview } from './ConditionsPreview';
 import { GroupEditModal } from './GroupEditModal';
 
 export function GroupListPanel({
   value,
-  onChange
+  onChange,
+  preview
 }: {
   value: IndicatorConditions;
   onChange: (next: IndicatorConditions) => void;
+  preview?: { symbol: string; symbolInput?: string; onSymbolChange?: (v: string) => void; quote?: 'USDT' | 'USDC'; datalistOptions?: string[]; interval: any; direction: 'long' | 'short'; indicatorSignals?: Record<string, boolean>; assumeSignalsOn?: boolean; onToggle?: (v: boolean) => void; onQuoteChange?: (q: 'USDT' | 'USDC') => void };
 }) {
   const [indicatorModal, setIndicatorModal] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
   const [groupModal, setGroupModal] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
@@ -29,6 +34,7 @@ export function GroupListPanel({
   );
   const isFallbackGroup = baseGroups.length === 0 && directIndicators.length > 0;
   const groups = isFallbackGroup ? [root] : baseGroups;
+  const symValid = useSymbolValidation(preview ? (preview.symbolInput || preview.symbol) : '', (preview?.quote ?? 'USDT') as any);
 
   const addGroup = () => {
     const nextRoot: ConditionGroupNode = {
@@ -48,6 +54,23 @@ export function GroupListPanel({
     const next = ensureGroup(removeNode(root as unknown as ConditionNode, id) ?? (root as unknown as ConditionNode));
     onChange({ root: normalizeConditionTree(next) } as any);
   };
+
+  const fmt = (n: any) => {
+    const v = Number(n);
+    if (!Number.isFinite(v)) return String(n);
+    const s = v.toFixed(4);
+    return s.replace(/0+$/, '').replace(/\.$/, '');
+  };
+  const labelOf = (type: string) => ({ bollinger: '볼린저 밴드', ma: '이동평균선', rsi: 'RSI', dmi: 'DMI/ADX', macd: 'MACD' } as Record<string, string>)[type] ?? type;
+  const indicatorLabelMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    try {
+      collectIndicatorNodes(root as unknown as ConditionNode).forEach((n) => {
+        map[n.id] = labelOf((n as any).indicator?.type ?? '');
+      });
+    } catch {}
+    return map;
+  }, [root]);
 
   const summary = (node: IndicatorLeafNode) => {
     const type = node.indicator.type;
@@ -81,17 +104,91 @@ export function GroupListPanel({
     }
     const cmp = node.comparison as any;
     if (cmp?.kind === 'candle') parts.push(`cmp: candle ${String(cmp.field).toUpperCase()}(${cmp.reference}) ${cmp.comparator}`);
-    if (cmp?.kind === 'value') parts.push(`cmp: ${cmp.comparator} ${cmp.value}`);
+    if (cmp?.kind === 'value') parts.push(`cmp: ${cmp.comparator} ${fmt(cmp.value)}`);
     if (cmp?.kind === 'indicator') {
       const m = cmp.metric ? ` ${cmp.metric}` : '';
       const r = cmp.reference ? `(${cmp.reference})` : '';
-      parts.push(`cmp: other${m}${r} ${cmp.comparator}`.trim());
+      const tLabel = indicatorLabelMap[cmp.targetIndicatorId] ?? '다른 지표';
+      parts.push(`cmp: ${tLabel}${m}${r} ${cmp.comparator}`.trim());
     }
     return parts.join(' · ');
   };
 
+  const collectStatusNodes = (node: ConditionNode, acc: StatusLeafNode[] = []): StatusLeafNode[] => {
+    if ((node as any).kind === 'status') {
+      acc.push(node as any);
+      return acc;
+    }
+    if ((node as any).kind === 'group') {
+      (node as any).children.forEach((c: any) => collectStatusNodes(c, acc));
+    }
+    return acc;
+  };
+
+  const statusSummary = (s: StatusLeafNode) => {
+    const label = s.metric === 'profitRate' ? '수익률' : s.metric === 'margin' ? '마진' : s.metric === 'buyCount' ? '매수횟수' : '진입경과';
+    const unit = s.unit ? ` ${s.unit}` : '';
+    return `${label} ${s.comparator} ${s.value}${unit}`;
+  };
+
   return (
     <div className="space-y-3">
+      {preview ? (
+        <div className="flex items-center justify-between">
+          <ConditionsPreview
+            conditions={value}
+            symbol={preview.symbol}
+            interval={preview.interval}
+            direction={preview.direction}
+            indicatorSignals={preview.indicatorSignals}
+          />
+          <div className="flex items-center gap-3 text-[11px] text-zinc-400">
+            <label className="flex items-center gap-2">
+              <span>심볼</span>
+              <input
+                value={preview.symbolInput ?? ''}
+                onChange={(e) => preview.onSymbolChange?.(e.target.value)}
+                onBlur={(e) => {
+                  const q = preview.quote ?? 'USDT';
+                  const norm = normalizePreviewSymbol(e.currentTarget.value || preview.symbol, q);
+                  preview.onSymbolChange?.(norm);
+                }}
+                placeholder={preview.symbol}
+                list="preview-symbols-inline"
+                className={`w-44 rounded bg-zinc-900 px-2 py-1 text-zinc-100 ${
+                  symValid?.valid === true ? 'border border-emerald-600' : symValid?.valid === false ? 'border border-rose-600' : 'border border-zinc-700'
+                }`}
+              />
+              <datalist id="preview-symbols-inline">
+                {(symValid?.suggestions ?? []).map((s) => (
+                  <option key={`pvi-${s}`} value={s} />
+                ))}
+              </datalist>
+              {/* 간단 유효성: 별도 훅 생략, 입력값 없으면 상태 미표시 */}
+              {symValid?.loading ? (
+                <span className="text-[10px] text-zinc-500">검증중…</span>
+              ) : preview.symbolInput ? (
+                <span className={`rounded border px-1 text-[10px] ${symValid?.valid ? 'border-emerald-700 text-emerald-300' : 'border-zinc-800 text-zinc-500'}`}>미리보기 {preview.symbol}</span>
+              ) : null}
+            </label>
+            <label className="flex items-center gap-2">
+              <span>쿼트</span>
+              <select
+                value={preview.quote ?? 'USDT'}
+                onChange={(e) => preview.onQuoteChange?.(e.target.value as 'USDT' | 'USDC')}
+                className="rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-[11px] text-zinc-100"
+              >
+                <option value="USDT">USDT</option>
+                <option value="USDC">USDC</option>
+              </select>
+            </label>
+            <label className="flex items-center gap-2">
+              <input type="checkbox" className="h-4 w-4" checked={!!preview.assumeSignalsOn} onChange={(e) => preview.onToggle?.(e.target.checked)} />
+              지표 신호 가정(ON)
+            </label>
+          </div>
+        </div>
+      ) : null}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2 text-[11px]">
           <span className="rounded border border-zinc-700 px-2 py-0.5 text-zinc-300">조건 그룹</span>
@@ -136,35 +233,45 @@ export function GroupListPanel({
                 </div>
               </div>
 
-              {indicators.length === 0 ? (
-                <div className="text-[11px] text-zinc-500">지표가 없습니다. ‘그룹 편집’에서 지표를 추가하세요.</div>
-              ) : (
-                <ul className="space-y-1">
-                  {indicators.map((n) => (
-                    <li key={n.id} className="flex items-center justify-between gap-2 rounded border border-zinc-800 bg-zinc-950/40 p-2">
-                      <div className="min-w-0">
-                        <p className="truncate text-[11px] text-zinc-400">{summary(n)}</p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setIndicatorModal({ open: true, id: n.id })}
-                          className="rounded border border-zinc-700 px-2 py-0.5 text-[11px] text-zinc-300"
-                        >
-                          지표 편집
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => removeIndicator(n.id)}
-                          className="rounded border border-zinc-700 px-2 py-0.5 text-[11px] text-rose-300"
-                        >
-                          삭제
-                        </button>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              )}
+              {(() => {
+                const statuses = collectStatusNodes(g as any);
+                const hasAny = indicators.length > 0 || statuses.length > 0;
+                if (!hasAny) return <div className="text-[11px] text-zinc-500">지표/상태 조건이 없습니다. ‘그룹 편집’에서 추가하세요.</div>;
+                return (
+                  <ul className="space-y-1">
+                    {indicators.map((n) => (
+                      <li key={n.id} className="flex items-center justify-between gap-2 rounded border border-zinc-800 bg-zinc-950/40 p-2">
+                        <div className="min-w-0">
+                          <p className="truncate text-[11px] text-zinc-400">{summary(n)}</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setIndicatorModal({ open: true, id: n.id })}
+                            className="rounded border border-zinc-700 px-2 py-0.5 text-[11px] text-zinc-300"
+                          >
+                            지표 편집
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => removeIndicator(n.id)}
+                            className="rounded border border-zinc-700 px-2 py-0.5 text-[11px] text-rose-300"
+                          >
+                            삭제
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                    {statuses.map((s) => (
+                      <li key={s.id} className="flex items-center justify-between gap-2 rounded border border-zinc-800 bg-zinc-950/40 p-2">
+                        <div className="min-w-0">
+                          <p className="truncate text-[11px] text-zinc-400">상태 · {statusSummary(s)}</p>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                );
+              })()}
             </div>
           );
         })}
@@ -185,6 +292,17 @@ export function GroupListPanel({
         groupId={groupModal.id ?? ''}
         onChange={onChange}
         onClose={() => setGroupModal({ open: false, id: null })}
+        preview={preview ? {
+          symbol: preview.symbol,
+          symbolInput: preview.symbolInput,
+          onSymbolChange: preview.onSymbolChange,
+          quote: preview.quote,
+          interval: preview.interval,
+          direction: preview.direction,
+          indicatorSignals: preview.indicatorSignals,
+          assumeSignalsOn: preview.assumeSignalsOn,
+          onToggle: preview.onToggle
+        } : undefined}
       />
     </div>
   );

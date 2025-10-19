@@ -227,9 +227,13 @@ export function duplicateGroup(root: ConditionNode, groupId: string): { root: Co
     if (node.kind === 'candle') {
       return createCandleLeaf({ ...node.candle });
     }
+    if (node.kind === 'status') {
+      const copyId = `${node.id}-copy-${Math.random().toString(36).slice(2, 6)}`;
+      return { kind: 'status', id: copyId, metric: node.metric, comparator: node.comparator, value: node.value, unit: node.unit } as any;
+    }
     // group
-    const dupChildren = node.children.map((c) => cloneNodeDeep(c));
-    return createIndicatorGroup(node.operator, dupChildren);
+    const dupChildren = (node as ConditionGroupNode).children.map((c) => cloneNodeDeep(c));
+    return createIndicatorGroup((node as ConditionGroupNode).operator, dupChildren);
   };
 
   const dupGroup = cloneNodeDeep(child) as ConditionGroupNode;

@@ -1,0 +1,110 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`ConditionsTrace snapshots renders indicator/status/candle summary consistently 1`] = `
+<div
+  class="space-y-2 rounded border border-zinc-800 bg-zinc-950/60 p-2 text-[11px]"
+>
+  <div
+    class="flex items-center gap-2"
+  >
+    <span
+      class="rounded border border-zinc-700 px-2 py-0.5 text-zinc-400"
+    >
+      세부 결과
+    </span>
+    <span
+      class="rounded px-2 py-0.5 border border-zinc-700 text-zinc-300"
+    >
+      불충족
+    </span>
+  </div>
+  <div
+    class="grid gap-2 md:grid-cols-2"
+  >
+    <div>
+      <p
+        class="mb-1 text-zinc-400"
+      >
+        지표
+      </p>
+      <ul
+        class="space-y-1"
+      >
+        <li
+          class="flex items-center justify-between rounded border border-zinc-800 bg-zinc-950/40 px-2 py-1"
+        >
+          <span
+            class="truncate text-zinc-300"
+          >
+            이동평균선
+            <span
+              class="text-zinc-500"
+            >
+               · cmp 
+              over
+               
+              0
+            </span>
+          </span>
+          <span
+            class="ml-2 inline-flex h-2 w-2 rounded-full bg-zinc-600"
+          />
+        </li>
+      </ul>
+    </div>
+    <div>
+      <p
+        class="mb-1 text-zinc-400"
+      >
+        상태
+      </p>
+      <p
+        class="text-zinc-500"
+      >
+        없음
+      </p>
+    </div>
+  </div>
+  <div
+    class="grid gap-2 md:grid-cols-2"
+  >
+    <div>
+      <p
+        class="mb-1 text-zinc-400"
+      >
+        캔들
+      </p>
+      <p
+        class="text-zinc-500"
+      >
+        없음
+      </p>
+    </div>
+    <div>
+      <p
+        class="mb-1 text-zinc-400"
+      >
+        그룹
+      </p>
+      <ul
+        class="space-y-1"
+      >
+        <li
+          class="flex items-center justify-between rounded border border-zinc-800 bg-zinc-950/40 px-2 py-1"
+        >
+          <span
+            class="truncate text-zinc-300"
+          >
+            AND
+             · 
+            cond-root
+          </span>
+          <span
+            class="ml-2 inline-flex h-2 w-2 rounded-full bg-zinc-600"
+          />
+        </li>
+      </ul>
+    </div>
+  </div>
+</div>
+`;

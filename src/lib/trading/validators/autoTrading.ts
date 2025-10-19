@@ -5,14 +5,21 @@ import type {
   IndicatorConditions,
   IndicatorLeafNode,
   MaCondition,
-  RsiCondition
+  RsiCondition,
+  StatusLeafNode
 } from '@/types/trading/auto-trading';
 
 function hasAnyIndicator(conditions: IndicatorConditions | undefined): boolean {
   if (!conditions) return false;
   const root = conditions.root as unknown as ConditionNode;
+  const hasAny = (node: any): boolean => {
+    if (!node || typeof node !== 'object') return false;
+    if (node.kind === 'indicator' || node.kind === 'status') return true;
+    if (node.kind === 'group') return node.children?.some((c: any) => hasAny(c)) ?? false;
+    return false;
+  };
   try {
-    return collectIndicatorNodes(root).length > 0;
+    return hasAny(root);
   } catch {
     return false;
   }
@@ -91,6 +98,39 @@ function collectIndicatorIds(root: ConditionNode): Set<string> {
   return ids;
 }
 
+function collectStatusNodes(node: ConditionNode, acc: StatusLeafNode[] = []): StatusLeafNode[] {
+  if ((node as any).kind === 'status') {
+    acc.push(node as any);
+    return acc;
+  }
+  if ((node as any).kind === 'group') {
+    (node as any).children.forEach((c: any) => collectStatusNodes(c, acc));
+  }
+  return acc;
+}
+
+function validateStatusNode(node: StatusLeafNode, label: string): string[] {
+  const errs: string[] = [];
+  const cmp = node.comparator;
+  if (!cmp || cmp === 'none') errs.push(`${label}: 상태(${node.metric}) 비교연산자를 선택하세요.`);
+  const v = Number(node.value);
+  if (!Number.isFinite(v)) errs.push(`${label}: 상태(${node.metric}) 값이 올바르지 않습니다.`);
+  if (node.metric === 'profitRate') {
+    if (node.unit !== 'percent') errs.push(`${label}: 상태(수익률) 단위가 잘못되었습니다.`);
+    if (!(v >= -10000 && v <= 10000)) errs.push(`${label}: 상태(수익률) 값은 -10000~10000 범위여야 합니다.`);
+  } else if (node.metric === 'margin') {
+    if (!(node.unit === 'USDT' || node.unit === 'USDC')) errs.push(`${label}: 상태(마진) 단위는 USDT/USDC 이어야 합니다.`);
+    if (!(v >= 0)) errs.push(`${label}: 상태(마진) 값은 0 이상이어야 합니다.`);
+  } else if (node.metric === 'buyCount') {
+    if (node.unit !== 'count') errs.push(`${label}: 상태(매수횟수) 단위는 count 이어야 합니다.`);
+    if (!(Number.isInteger(v) && v >= 1)) errs.push(`${label}: 상태(매수횟수) 값은 1 이상의 정수여야 합니다.`);
+  } else if (node.metric === 'entryAge') {
+    if (node.unit !== 'days') errs.push(`${label}: 상태(진입경과) 단위는 days 이어야 합니다.`);
+    if (!(v >= 0)) errs.push(`${label}: 상태(진입경과) 값은 0 이상이어야 합니다.`);
+  }
+  return errs;
+}
+
 function validateMaCombination(config: MaCondition): string[] {
   const a = new Set(config.actions);
   const errs: string[] = [];
@@ -119,9 +159,10 @@ export function validateIndicatorConditions(
   if (!conditions) return options.requireIndicator ? [`${label}: 지표 조건이 필요합니다.`] : [];
   const root = conditions.root as unknown as ConditionNode;
   const indicators = collectIndicatorNodes(root);
+  const statuses = collectStatusNodes(root);
   const ids = collectIndicatorIds(root);
   const errs: string[] = [];
-  if (options.requireIndicator && indicators.length === 0) errs.push(`${label}: 최소 1개의 지표가 필요합니다.`);
+  if (options.requireIndicator && indicators.length === 0 && statuses.length === 0) errs.push(`${label}: 최소 1개의 조건(지표/상태)이 필요합니다.`);
   for (const node of indicators) {
     const type = node.indicator.type;
     const config: any = node.indicator.config;
@@ -130,6 +171,9 @@ export function validateIndicatorConditions(
     if (node.comparison.kind === 'indicator' && !ids.has(node.comparison.targetIndicatorId)) {
       errs.push(`${label}: 비교 대상을 찾을 수 없습니다.`);
     }
+  }
+  for (const s of statuses) {
+    errs.push(...validateStatusNode(s, label));
   }
   return errs;
 }

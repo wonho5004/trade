@@ -11,7 +11,10 @@ import type {
   IndicatorConditions,
   IndicatorKey,
   IndicatorLeafNode,
-  CandleLeafNode
+  CandleLeafNode,
+  StatusLeafNode,
+  StatusMetric,
+  StatusUnit
 } from '@/types/trading/auto-trading';
 import {
   createIndicatorEntry,
@@ -23,6 +26,9 @@ import {
 } from '@/lib/trading/autoTradingDefaults';
 import { collectIndicatorNodes, replaceIndicatorNode, removeNode, ensureGroup, replaceGroupOperator, insertChild, replaceCandleNode, collectGroupNodes, moveNode, moveNodeToGroup, duplicateIndicator, duplicateGroup, isDescendant, moveNodeRelative } from '@/lib/trading/conditionsTree';
 import { IndicatorParamEditor } from '@/components/trading/indicators/IndicatorParamEditor';
+import { ConditionsPreview } from './ConditionsPreview';
+import { useSymbolValidation } from '@/hooks/useSymbolValidation';
+import { normalizeSymbol as normalizePreviewSymbol } from '@/lib/trading/symbols';
 import { useOptionalToast } from '@/components/common/ToastProvider';
 
 const INDICATOR_LABELS: Record<IndicatorKey, string> = {
@@ -31,6 +37,13 @@ const INDICATOR_LABELS: Record<IndicatorKey, string> = {
   rsi: 'RSI',
   dmi: 'DMI / ADX',
   macd: 'MACD'
+};
+
+const STATUS_LABELS: Record<StatusMetric, string> = {
+  profitRate: '현재 수익률(%)',
+  margin: '현재 마진',
+  buyCount: '매수 횟수',
+  entryAge: '진입 경과(일)'
 };
 
 function ensureRoot(value: IndicatorConditions) {
@@ -76,6 +89,24 @@ function appendIndicator(value: IndicatorConditions, key: IndicatorKey): Indicat
   return anyUpdated as IndicatorConditions;
 }
 
+function createStatusLeaf(metric: StatusMetric): StatusLeafNode {
+  const id = `cond-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  const base: StatusLeafNode = { kind: 'status', id, metric, comparator: 'over', value: 0 } as StatusLeafNode;
+  if (metric === 'profitRate') base.unit = 'percent';
+  else if (metric === 'margin') base.unit = 'USDT';
+  else if (metric === 'buyCount') base.unit = 'count';
+  else if (metric === 'entryAge') base.unit = 'days';
+  return base;
+}
+
+function appendStatus(value: IndicatorConditions, metric: StatusMetric): IndicatorConditions {
+  const root = ensureRoot(value);
+  const node = createStatusLeaf(metric);
+  const group = createIndicatorGroup('and', [node as unknown as ConditionNode]);
+  const nextRoot = root.kind === 'group' ? { ...root, children: [...root.children, group] } : createIndicatorGroup('or', [group]);
+  return ({ root: normalizeConditionTree(nextRoot) } as unknown) as IndicatorConditions;
+}
+
 export function ConditionsEditorModal({
   open,
   title,
@@ -85,6 +116,7 @@ export function ConditionsEditorModal({
   initialMode = 'select',
   initialTitle,
   embedded = false,
+  previewCtx
 }: {
   open: boolean;
   title: string;
@@ -94,6 +126,18 @@ export function ConditionsEditorModal({
   initialMode?: 'select' | 'edit';
   initialTitle?: string;
   embedded?: boolean;
+  previewCtx?: {
+    symbol: string;
+    symbolInput?: string;
+    onSymbolChange?: (v: string) => void;
+    quote?: 'USDT' | 'USDC';
+    onQuoteChange?: (q: 'USDT' | 'USDC') => void;
+    interval: any;
+    direction: 'long' | 'short';
+    indicatorSignals?: Record<string, boolean>;
+    assumeSignalsOn?: boolean;
+    onToggle?: (v: boolean) => void;
+  };
 }) {
   const [local, setLocal] = useState<IndicatorConditions>(() => value);
   const [mode, setMode] = useState<'select' | 'edit'>('select');
@@ -102,6 +146,7 @@ export function ConditionsEditorModal({
   const [history, setHistory] = useState<IndicatorConditions[]>([]);
   const [redo, setRedo] = useState<IndicatorConditions[]>([]);
   const [selectedKey, setSelectedKey] = useState<IndicatorKey | null>(null);
+  const [selectedStatus, setSelectedStatus] = useState<StatusMetric | null>(null);
 
   // 의도적으로 open 변경에만 반응하여 편집 중 타이틀/모드가 리셋되지 않도록 함
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -121,6 +166,7 @@ export function ConditionsEditorModal({
   }, [value, open]);
 
   const indicators = useMemo(() => Object.keys(INDICATOR_LABELS) as IndicatorKey[], []);
+  const statusMetrics = useMemo(() => ['profitRate', 'margin', 'buyCount', 'entryAge'] as StatusMetric[], []);
   const addLockRef = useRef(false);
   const lastAddRef = useRef<{ key: IndicatorKey; at: number } | null>(null);
   const pendingAddRef = useRef<IndicatorKey | null>(null);
@@ -173,10 +219,56 @@ export function ConditionsEditorModal({
     onChange(next);
   };
 
+  const symValid = useSymbolValidation((previewCtx?.symbolInput || previewCtx?.symbol || ''), (previewCtx?.quote ?? 'USDT') as any);
+
   if (!open) return null;
 
   const Content = (
         <div className="p-4 max-h-[75vh] overflow-auto">
+          {previewCtx ? (
+            <div className="mb-3 flex items-center justify-between">
+              <ConditionsPreview
+                conditions={local}
+                symbol={previewCtx.symbol}
+                interval={previewCtx.interval}
+                direction={previewCtx.direction}
+                indicatorSignals={previewCtx.indicatorSignals}
+              />
+              <div className="flex items-center gap-3 text-[11px] text-zinc-400">
+                <label className="flex items-center gap-2">
+                  <span>심볼</span>
+                  <input
+                    value={previewCtx.symbolInput ?? ''}
+                    onChange={(e) => previewCtx.onSymbolChange?.(e.target.value)}
+                    onBlur={(e) => {
+                      const q = previewCtx.quote ?? 'USDT';
+                      const norm = normalizePreviewSymbol(e.currentTarget.value || previewCtx.symbol, q);
+                      previewCtx.onSymbolChange?.(norm);
+                    }}
+                    placeholder={previewCtx.symbol}
+                    className={`w-44 rounded bg-zinc-900 px-2 py-1 text-zinc-100 ${
+                      symValid?.valid === true ? 'border border-emerald-600' : symValid?.valid === false ? 'border border-rose-600' : 'border border-zinc-700'
+                    }`}
+                  />
+                </label>
+                <label className="flex items-center gap-2">
+                  <span>쿼트</span>
+                  <select
+                    value={previewCtx.quote ?? 'USDT'}
+                    onChange={(e) => previewCtx.onQuoteChange?.(e.target.value as 'USDT' | 'USDC')}
+                    className="rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-[11px] text-zinc-100"
+                  >
+                    <option value="USDT">USDT</option>
+                    <option value="USDC">USDC</option>
+                  </select>
+                </label>
+                <label className="flex items-center gap-2">
+                  <input type="checkbox" className="h-4 w-4" checked={!!previewCtx.assumeSignalsOn} onChange={(e) => previewCtx.onToggle?.(e.target.checked)} />
+                  지표 신호 가정(ON)
+                </label>
+              </div>
+            </div>
+          ) : null}
           {mode === 'select' ? (
             <div className="space-y-4">
               <p className="text-xs text-zinc-400">지표 선택</p>
@@ -218,6 +310,41 @@ export function ConditionsEditorModal({
                   추가
                 </button>
                 <span className="text-[11px] text-zinc-500">선택 후 ‘추가’를 눌러 아래 목록에 쌓입니다.</span>
+              </div>
+              <div className="h-px w-full bg-zinc-800/60" />
+              <p className="text-xs text-zinc-400">상태 조건</p>
+              <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+                {statusMetrics.map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    aria-pressed={selectedStatus === m}
+                    onClick={() => setSelectedStatus((prev) => (prev === m ? null : m))}
+                    className={`rounded px-3 py-2 text-left text-xs ${
+                      selectedStatus === m
+                        ? 'border border-sky-500/60 text-sky-200'
+                        : 'border border-zinc-700 text-zinc-200 hover:border-sky-500/60 hover:text-sky-200'
+                    }`}
+                  >
+                    {STATUS_LABELS[m]}
+                  </button>
+                ))}
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  disabled={!selectedStatus}
+                  onClick={() => {
+                    if (!selectedStatus) return;
+                    const next = appendStatus(local, selectedStatus);
+                    commit(next);
+                    setSelectedStatus(null);
+                  }}
+                  className="rounded border border-sky-500/60 px-3 py-1.5 text-xs font-semibold text-sky-200 disabled:opacity-50"
+                >
+                  상태 추가
+                </button>
+                <span className="text-[11px] text-zinc-500">상태 조건은 새 그룹으로 추가됩니다.</span>
               </div>
             </div>
           ) : (
@@ -309,6 +436,17 @@ function GroupTreeEditor({ value, onChange }: { value: IndicatorConditions; onCh
   const [hoverGroup, setHoverGroup] = useState<string | null>(null);
   const [hoverIndicator, setHoverIndicator] = useState<{ id: string; pos: 'before' | 'after' } | null>(null);
 
+  const replaceStatusNode = (node: ConditionNode, targetId: string, replacer: (cur: StatusLeafNode) => StatusLeafNode): ConditionNode => {
+    if (node.kind === 'status') {
+      if (node.id === targetId) return replacer(node);
+      return node;
+    }
+    if (node.kind === 'group') {
+      return { ...node, children: node.children.map((c) => replaceStatusNode(c, targetId, replacer)) };
+    }
+    return node;
+  };
+
   const updateIndicator = (id: string, updater: (current: IndicatorKey, config: any) => any) => {
     const nextRoot = replaceIndicatorNode(root, id, (current) => {
       const type = current.indicator.type;
@@ -370,6 +508,110 @@ function GroupTreeEditor({ value, onChange }: { value: IndicatorConditions; onCh
     if (node.kind === 'group') {
       // 그룹 UI 제거: 단순히 자식 노드만 렌더링(플랫 편집)
       return <div key={node.id} className="space-y-3">{node.children.map((child) => renderNode(child))}</div>;
+    }
+    if (node.kind === 'status') {
+      const metricOptions: Array<{ key: StatusMetric; label: string }> = [
+        { key: 'profitRate', label: STATUS_LABELS.profitRate },
+        { key: 'margin', label: STATUS_LABELS.margin },
+        { key: 'buyCount', label: STATUS_LABELS.buyCount },
+        { key: 'entryAge', label: STATUS_LABELS.entryAge }
+      ];
+      const unitOptions = (m: StatusMetric): StatusUnit[] => {
+        if (m === 'profitRate') return ['percent'];
+        if (m === 'margin') return ['USDT', 'USDC'];
+        if (m === 'buyCount') return ['count'];
+        return ['days'];
+      };
+      const units = unitOptions(node.metric);
+      return (
+        <div key={node.id} className="space-y-2 rounded border border-zinc-800 bg-zinc-950/50 p-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="rounded border border-sky-500/40 px-2 py-0.5 text-[11px] text-sky-200">상태</span>
+              <span className="text-sm font-semibold text-sky-200">{STATUS_LABELS[node.metric]}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                const nextRoot = ensureGroup(removeNode(root, node.id) ?? root);
+                onChange({ ...(value as any), root: normalizeConditionTree(nextRoot) });
+              }}
+              className="rounded border border-zinc-700 px-2 py-1 text-xs text-zinc-300 hover:border-rose-400 hover:text-rose-300"
+            >
+              제거
+            </button>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 text-[11px] text-zinc-300">
+            <label className="flex items-center gap-1">
+              <span className="text-zinc-400">메트릭</span>
+              <select
+                value={node.metric}
+                onChange={(e) => {
+                  const m = e.target.value as StatusMetric;
+                  const defUnits = unitOptions(m);
+                  const nextUnit = defUnits.includes(node.unit as any) ? (node.unit as StatusUnit) : defUnits[0];
+                  const next = replaceStatusNode(root, node.id, (cur) => ({ ...cur, metric: m, unit: nextUnit }));
+                  onChange({ ...(value as any), root: normalizeConditionTree(next) });
+                }}
+                className="rounded border border-zinc-700 bg-zinc-900 px-2 py-1"
+              >
+                {metricOptions.map((opt) => (
+                  <option key={opt.key} value={opt.key}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex items-center gap-1">
+              <span className="text-zinc-400">비교</span>
+              <select
+                value={node.comparator}
+                onChange={(e) => {
+                  const next = replaceStatusNode(root, node.id, (cur) => ({ ...cur, comparator: e.target.value as ComparisonOperator }));
+                  onChange({ ...(value as any), root: normalizeConditionTree(next) });
+                }}
+                className="rounded border border-zinc-700 bg-zinc-900 px-2 py-1"
+              >
+                <option value="over">보다 큼({">"})</option>
+                <option value="gte">크거나같음(≥)</option>
+                <option value="eq">같음(=)</option>
+                <option value="lte">작거나같음(≤)</option>
+                <option value="under">보다 작음({"<"})</option>
+              </select>
+            </label>
+            <label className="flex items-center gap-1">
+              <span className="text-zinc-400">값</span>
+              <input
+                type="number"
+                value={node.value}
+                onChange={(e) => {
+                  const v = Number(e.target.value);
+                  const next = replaceStatusNode(root, node.id, (cur) => ({ ...cur, value: Number.isFinite(v) ? v : cur.value }));
+                  onChange({ ...(value as any), root: normalizeConditionTree(next) });
+                }}
+                className="w-28 rounded border border-zinc-700 bg-zinc-900 px-2 py-1"
+              />
+            </label>
+            <label className="flex items-center gap-1">
+              <span className="text-zinc-400">단위</span>
+              <select
+                value={(node.unit as any) ?? ''}
+                onChange={(e) => {
+                  const next = replaceStatusNode(root, node.id, (cur) => ({ ...cur, unit: e.target.value as StatusUnit }));
+                  onChange({ ...(value as any), root: normalizeConditionTree(next) });
+                }}
+                className="rounded border border-zinc-700 bg-zinc-900 px-2 py-1"
+              >
+                {units.map((u) => (
+                  <option key={u} value={u}>
+                    {u}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        </div>
+      );
     }
     if (node.kind === 'indicator') {
       const all = collectIndicatorNodes(root);

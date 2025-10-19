@@ -11,15 +11,18 @@ import { useSectionDirtyFlag } from '@/hooks/useSectionDirtyFlag';
 import { assertSectionReady } from '@/lib/trading/validators/autoTrading';
 import { SettingComment } from './SettingComment';
 import { SymbolSelector } from './SymbolSelector';
-import { SymbolsControlPanel } from './SymbolsControlPanel';
+// Legacy SymbolsControlPanel removed
 import { SymbolsPickerPanel } from './SymbolsPickerPanel';
 import { LogicSummary } from './LogicSummary';
 import { FooterActions } from './FooterActions';
 import { normalizeSymbol, uniqueAppend, removeSymbol } from '@/lib/trading/symbols';
 import { isNameTaken, upsertLocalStrategyName, listLocalStrategyNames, removeLocalStrategyName } from '@/lib/trading/strategies/local';
 import { GroupListPanel } from './GroupListPanel';
+import { ConditionsPreview } from './ConditionsPreview';
 import { createIndicatorConditions, normalizeConditionTree } from '@/lib/trading/autoTradingDefaults';
 import { collectIndicatorNodes } from '@/lib/trading/conditionsTree';
+import { useSymbolValidation } from '@/hooks/useSymbolValidation';
+import { normalizeSymbol as toExchangeSymbol } from '@/lib/trading/symbols';
 
 type Draft = AutoTradingSettings;
 
@@ -41,6 +44,8 @@ export function AutoTradingSettingsForm() {
 
   // Local helpers/states
   const [symbolsQuote, setSymbolsQuote] = useState<'USDT' | 'USDC'>('USDT');
+  const [previewSymbolInput, setPreviewSymbolInput] = useState<string>('');
+  const [previewQuote, setPreviewQuote] = useState<'USDT' | 'USDC'>(symbolsQuote);
   const [filterStable, setFilterStable] = useState<boolean>(true);
   const [minVolume, setMinVolume] = useState<number>(0);
   const [minQuoteVolume, setMinQuoteVolume] = useState<number>(0);
@@ -93,6 +98,36 @@ export function AutoTradingSettingsForm() {
   const hedgeDirty = useSectionDirtyFlag(settings.hedgeActivation, draft.hedgeActivation);
 
   // Utilities
+  const previewInterval = useMemo(() => {
+    const tf = draft.timeframe;
+    const supported = new Set(['1m','3m','5m','15m','1h','4h','1d','1w']);
+    if (supported.has(tf as any)) return (tf as any);
+    if (tf === '8h' || tf === '12h') return '4h';
+    if (tf === '24h') return '1d';
+    return '15m';
+  }, [draft.timeframe]);
+  const previewSymbol = useMemo(() => {
+    const src = previewSymbolInput?.trim() ? previewSymbolInput.trim() : (draft.symbolSelection.manualSymbols[0] || 'BTCUSDT');
+    const sx = toExchangeSymbol(src, previewQuote);
+    return sx || `BTC${previewQuote}`;
+  }, [draft.symbolSelection.manualSymbols, previewQuote, previewSymbolInput]);
+
+  const previewSymbolValidation = useSymbolValidation(previewSymbolInput || previewSymbol, symbolsQuote);
+  const previewDatalistOptions = useMemo(() => {
+    const m = new Set<string>(draft.symbolSelection.manualSymbols.map((s) => s));
+    (previewSymbolValidation.suggestions || []).forEach((s) => m.add(s));
+    return Array.from(m).slice(0, 50);
+  }, [draft.symbolSelection.manualSymbols, previewSymbolValidation.suggestions]);
+  const buildSignals = (conds: any, on: boolean) => {
+    try {
+      if (!on) return undefined;
+      const ids = collectIndicatorNodes((conds?.root as any) || conds).map((n) => n.id);
+      return Object.fromEntries(ids.map((id) => [id, true]));
+    } catch {
+      return undefined;
+    }
+  };
+  const [assumeSignalsOn, setAssumeSignalsOn] = useState(true);
   const copyToClipboard = async (items: string[]) => {
     try {
       await navigator.clipboard.writeText(items.join('\n'));
@@ -219,6 +254,9 @@ export function AutoTradingSettingsForm() {
     const cleaned = {
       manualSymbols: normalizeList(draft.symbolSelection.manualSymbols),
       excludedSymbols: normalizeList(draft.symbolSelection.excludedSymbols),
+      excludedReasons: Object.fromEntries(
+        Object.entries(draft.symbolSelection.excludedReasons ?? {}).map(([k, v]) => [normalizeSymbol(k, symbolsQuote), String(v || '')])
+      ),
       leverageOverrides: normalizeOverrides(draft.symbolSelection.leverageOverrides),
       positionOverrides: normalizePosOverrides(draft.symbolSelection.positionOverrides)
     } as const;
@@ -261,6 +299,7 @@ export function AutoTradingSettingsForm() {
         ...d.symbolSelection,
         manualSymbols: cleaned.manualSymbols,
         excludedSymbols: cleaned.excludedSymbols,
+        excludedReasons: cleaned.excludedReasons,
         leverageOverrides: cleaned.leverageOverrides,
         positionOverrides: cleaned.positionOverrides
       };
@@ -516,110 +555,17 @@ export function AutoTradingSettingsForm() {
           onSave={handleSaveSymbols}
         >
           <div className="space-y-4">
-            {/* Controls row */}
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-xs text-zinc-300">
-              <label className="flex items-center gap-2">
-                <span className="text-zinc-400">쿼트</span>
-                <select
-                  value={symbolsQuote}
-                  onChange={(e) => setSymbolsQuote(e.target.value as 'USDT' | 'USDC')}
-                  className="rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs text-zinc-100"
-                >
-                  <option value="USDT">USDT</option>
-                  <option value="USDC">USDC</option>
-                </select>
-              </label>
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={filterStable}
-                  onChange={(e) => setFilterStable(e.target.checked)}
-                  className="h-4 w-4 rounded border border-zinc-700 bg-zinc-900"
-                />
-                <span>스테이블 제외</span>
-              </label>
-              <label className="flex items-center gap-1">
-                <span className="text-zinc-400">최근 N</span>
-                <input
-                  type="number"
-                  min={1}
-                  max={50}
-                  value={recentMax}
-                  onChange={(e) => setRecentMax(Math.min(50, Math.max(1, Number(e.target.value) || 12)))}
-                  className="w-16 rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs text-zinc-100"
-                />
-              </label>
-              <label className="flex items-center gap-1">
-                <span className="text-zinc-400">보관(일)</span>
-                <input
-                  type="number"
-                  min={1}
-                  max={365}
-                  value={recentRetentionDays}
-                  onChange={(e) => setRecentRetentionDays(Math.min(365, Math.max(1, Number(e.target.value) || 30)))}
-                  className="w-20 rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs text-zinc-100"
-                />
-              </label>
-              <label className="ml-3 flex items-center gap-1">
-                <span className="text-zinc-400">최소 거래량</span>
-                <input
-                  type="number"
-                  min={0}
-                  value={minVolume}
-                  onChange={(e) => setMinVolume(Math.max(0, Number(e.target.value) || 0))}
-                  placeholder="ex) 100000"
-                  className="w-24 rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs text-zinc-100"
-                />
-              </label>
-              <label className="flex items-center gap-1">
-                <span className="text-zinc-400">최소 거래대금</span>
-                <input
-                  type="number"
-                  min={0}
-                  value={minQuoteVolume}
-                  onChange={(e) => setMinQuoteVolume(Math.max(0, Number(e.target.value) || 0))}
-                  placeholder="ex) 1000000"
-                  className="w-28 rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs text-zinc-100"
-                />
-              </label>
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={excludeUnknownListing}
-                  onChange={(e) => setExcludeUnknownListing(e.target.checked)}
-                  className="h-4 w-4 rounded border border-zinc-700 bg-zinc-900"
-                />
-                <span className="whitespace-nowrap">상장일 정보 없음 제외</span>
-              </label>
-              <label className="flex items-center gap-1">
-                <span className="text-zinc-400">상장일 ≤(일) 제외</span>
-                <input
-                  type="number"
-                  min={1}
-                  max={1000}
-                  value={draft.symbolSelection.maxListingAgeDays ?? ''}
-                  onChange={(e) =>
-                    setDraft((d) => ({
-                      ...d,
-                      symbolSelection: {
-                        ...d.symbolSelection,
-                        maxListingAgeDays:
-                          e.target.value === '' ? null : Math.min(1000, Math.max(1, Number(e.target.value) || 1))
-                      }
-                    }))
-                  }
-                  placeholder="예: 30"
-                  className="w-20 rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs text-zinc-100"
-                />
-              </label>
-              <span className="text-[11px] text-zinc-500">검색·추천·정규화/필터에 사용</span>
-            </div>
+            {/* Controls removed: 최근N/보관/최소 거래량/최소 거래대금/상장일 제외는 아래 패널로 이동 */}
+            <div className="hidden" />
 
             {/* 신규: 심볼 검색/추가/제외 + 표형식 오버라이드 */}
             <SymbolsPickerPanel
               quote={symbolsQuote}
+              symbolCount={draft.symbolCount}
+              onChangeQuote={(q) => setSymbolsQuote(q)}
               manual={draft.symbolSelection.manualSymbols}
               excluded={draft.symbolSelection.excludedSymbols}
+              excludedReasons={draft.symbolSelection.excludedReasons ?? {}}
               leverageOverrides={draft.symbolSelection.leverageOverrides}
               positionOverrides={draft.symbolSelection.positionOverrides}
               featureOverrides={(draft.symbolSelection as any).featureOverrides ?? {}}
@@ -630,6 +576,7 @@ export function AutoTradingSettingsForm() {
                     ...d.symbolSelection,
                     manualSymbols: next.manual,
                     excludedSymbols: next.excluded,
+                    excludedReasons: next.excludedReasons,
                     leverageOverrides: next.leverageOverrides,
                     positionOverrides: next.positionOverrides,
                     featureOverrides: next.featureOverrides
@@ -638,7 +585,58 @@ export function AutoTradingSettingsForm() {
               }
             />
 
-            {/* Ranking sort / autofill controls */}
+            {/* 제외 규칙(상장일) — 제외 표 아래 배치 */}
+            <div className="rounded border border-zinc-800 bg-zinc-950/60 p-3 text-xs text-zinc-300">
+              <div className="flex flex-wrap items-center gap-3">
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={draft.symbolSelection.maxListingAgeDays != null || false}
+                    onChange={(e) =>
+                      setDraft((d) => ({
+                        ...d,
+                        symbolSelection: {
+                          ...d.symbolSelection,
+                          maxListingAgeDays: e.target.checked ? (d.symbolSelection.maxListingAgeDays ?? 30) : null
+                        }
+                      }))
+                    }
+                    className="h-4 w-4 rounded border border-zinc-700 bg-zinc-900"
+                  />
+                  <span>상장일 N일 이하 제외</span>
+                </label>
+                {draft.symbolSelection.maxListingAgeDays != null ? (
+                  <input
+                    type="number"
+                    min={1}
+                    max={1000}
+                    value={draft.symbolSelection.maxListingAgeDays}
+                    onChange={(e) =>
+                      setDraft((d) => ({
+                        ...d,
+                        symbolSelection: {
+                          ...d.symbolSelection,
+                          maxListingAgeDays: Math.min(1000, Math.max(1, Number(e.target.value) || 1))
+                        }
+                      }))
+                    }
+                    className="w-20 rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs text-zinc-100"
+                  />
+                ) : null}
+                <label className="ml-3 flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={excludeUnknownListing}
+                    onChange={(e) => setExcludeUnknownListing(e.target.checked)}
+                    className="h-4 w-4 rounded border border-zinc-700 bg-zinc-900"
+                  />
+                  <span>상장일 정보 없음 제외</span>
+                </label>
+              </div>
+            </div>
+
+            {/* Ranking sort / autofill controls (removed) */}
+            {false && (
             <div className="grid gap-6 md:grid-cols-2">
               <div className="space-y-2">
                 <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-300">
@@ -922,43 +920,6 @@ export function AutoTradingSettingsForm() {
                   </div>
                 </div>
 
-                <SymbolsControlPanel
-                  quote={symbolsQuote}
-                  symbols={draft.symbolSelection.manualSymbols}
-                  leverageOverrides={draft.symbolSelection.leverageOverrides}
-                  positionOverrides={draft.symbolSelection.positionOverrides}
-                  onChangeLeverage={(sym, val) =>
-                    setDraft((d) => ({
-                      ...d,
-                      symbolSelection: {
-                        ...d.symbolSelection,
-                        leverageOverrides: { ...d.symbolSelection.leverageOverrides, [sym]: val }
-                      }
-                    }))
-                  }
-                  onChangePosition={(sym, pref) =>
-                    setDraft((d) => ({
-                      ...d,
-                      symbolSelection: {
-                        ...d.symbolSelection,
-                        positionOverrides: {
-                          ...(d.symbolSelection.positionOverrides ?? {}),
-                          [sym]: (pref || '') as any
-                        }
-                      }
-                    }))
-                  }
-                  onRemove={(sym) =>
-                    setDraft((d) => ({
-                      ...d,
-                      symbolSelection: {
-                        ...d.symbolSelection,
-                        manualSymbols: removeSymbol(d.symbolSelection.manualSymbols, sym),
-                        excludedSymbols: uniqueAppend(d.symbolSelection.excludedSymbols, sym)
-                      }
-                    }))
-                  }
-                />
               </div>
 
               {/* Ranking fields + recommend */}
@@ -1069,9 +1030,10 @@ export function AutoTradingSettingsForm() {
                 </div>
               </div>
             </div>
+            )}
 
-            {/* Search (add/exclude) */}
-            <div className="grid gap-6 md:grid-cols-2">
+            {/* Search (add/exclude) — legacy hidden */}
+            <div className="hidden grid gap-6 md:grid-cols-2">
               <div className="space-y-2">
                 <SymbolSelector
                   title="심볼 검색 (추가/제외)"
@@ -1893,6 +1855,56 @@ export function AutoTradingSettingsForm() {
                   <span className="ml-auto text-[11px] text-zinc-500">그룹 내 지표를 아래에서 편집하세요 (변경 시 자동 저장됩니다)</span>
                 </div>
                 <div className={draft.entry[dir].immediate ? 'pointer-events-none opacity-40' : ''}>
+                  <div className="mb-2 flex items-center justify-between">
+                    <ConditionsPreview
+                      conditions={ensureIndicators(draft.entry[dir].indicators)}
+                      symbol={previewSymbol}
+                      interval={previewInterval as any}
+                      direction={dir}
+                      indicatorSignals={buildSignals(ensureIndicators(draft.entry[dir].indicators), assumeSignalsOn) as any}
+                    />
+                    <div className="flex items-center gap-3 text-[11px] text-zinc-400">
+                      <label className="flex items-center gap-2">
+                        <span>심볼</span>
+                        <input
+                          list="preview-symbols"
+                          value={previewSymbolInput}
+                          onChange={(e) => setPreviewSymbolInput(e.target.value)}
+                          onBlur={(e) => setPreviewSymbolInput(toExchangeSymbol(e.currentTarget.value || previewSymbol, previewQuote))}
+                          placeholder={previewSymbol}
+                          className={`w-44 rounded bg-zinc-900 px-2 py-1 text-zinc-100 ${
+                            previewSymbolValidation.valid === true
+                              ? 'border border-emerald-600'
+                              : previewSymbolValidation.valid === false
+                              ? 'border border-rose-600'
+                              : 'border border-zinc-700'
+                          }`}
+                        />
+                        <datalist id="preview-symbols">
+                          {previewDatalistOptions.map((s) => (
+                            <option key={`pv-${s}`} value={s} />
+                          ))}
+                        </datalist>
+                        <select
+                          value={previewQuote}
+                          onChange={(e) => setPreviewQuote(e.target.value as 'USDT' | 'USDC')}
+                          className="rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-zinc-100"
+                        >
+                          <option value="USDT">USDT</option>
+                          <option value="USDC">USDC</option>
+                        </select>
+                        {previewSymbolValidation.loading ? (
+                          <span className="text-[11px] text-zinc-500">검증중…</span>
+                        ) : previewSymbolValidation.valid === false ? (
+                          <span className="text-[11px] text-rose-400">유효하지 않은 심볼</span>
+                        ) : null}
+                      </label>
+                      <label className="flex items-center gap-2">
+                        <input type="checkbox" className="h-4 w-4" checked={assumeSignalsOn} onChange={(e) => setAssumeSignalsOn(e.target.checked)} />
+                        지표 신호 가정(ON)
+                      </label>
+                    </div>
+                  </div>
                   <GroupListPanel
                   value={ensureIndicators(draft.entry[dir].indicators)}
                   onChange={(next) => {
@@ -1955,6 +1967,7 @@ export function AutoTradingSettingsForm() {
                 />
                 <GroupListPanel
                   value={ensureIndicators(draft.scaleIn[dir].indicators)}
+                  preview={{ symbol: previewSymbol, symbolInput: previewSymbolInput, onSymbolChange: setPreviewSymbolInput, quote: previewQuote, datalistOptions: previewDatalistOptions, interval: previewInterval as any, direction: dir, indicatorSignals: buildSignals(ensureIndicators(draft.scaleIn[dir].indicators), assumeSignalsOn) as any, assumeSignalsOn, onToggle: setAssumeSignalsOn, onQuoteChange: setPreviewQuote as any }}
                   onChange={(next) => {
                     setDraft((d) => ({
                       ...d,
@@ -2017,6 +2030,7 @@ export function AutoTradingSettingsForm() {
                 />
                 <GroupListPanel
                   value={ensureIndicators(draft.exit[dir].indicators)}
+                  preview={{ symbol: previewSymbol, symbolInput: previewSymbolInput, onSymbolChange: setPreviewSymbolInput, quote: previewQuote, datalistOptions: previewDatalistOptions, interval: previewInterval as any, direction: dir, indicatorSignals: buildSignals(ensureIndicators(draft.exit[dir].indicators), assumeSignalsOn) as any, assumeSignalsOn, onToggle: setAssumeSignalsOn, onQuoteChange: setPreviewQuote as any }}
                   onChange={(next) => {
                     setDraft((d) => ({
                       ...d,
@@ -2100,6 +2114,7 @@ export function AutoTradingSettingsForm() {
             />
             <GroupListPanel
               value={ensureIndicators(draft.hedgeActivation.indicators)}
+              preview={{ symbol: previewSymbol, symbolInput: previewSymbolInput, onSymbolChange: setPreviewSymbolInput, quote: previewQuote, datalistOptions: previewDatalistOptions, interval: previewInterval as any, direction: 'long', indicatorSignals: buildSignals(ensureIndicators(draft.hedgeActivation.indicators), assumeSignalsOn) as any, assumeSignalsOn, onToggle: setAssumeSignalsOn, onQuoteChange: setPreviewQuote as any }}
               onChange={(next) => {
                 setDraft((d) => ({ ...d, hedgeActivation: { ...d.hedgeActivation, indicators: next } }));
                 updateIndicatorsRaw({ type: 'hedge' }, toNormalizedCompatIndicatorConditions(next));
@@ -2166,6 +2181,7 @@ export function AutoTradingSettingsForm() {
             />
             <GroupListPanel
               value={ensureIndicators(draft.stopLoss.stopLossLine.indicators)}
+              preview={{ symbol: previewSymbol, symbolInput: previewSymbolInput, onSymbolChange: setPreviewSymbolInput, quote: previewQuote, datalistOptions: previewDatalistOptions, interval: previewInterval as any, direction: 'long', indicatorSignals: buildSignals(ensureIndicators(draft.stopLoss.stopLossLine.indicators), assumeSignalsOn) as any, assumeSignalsOn, onToggle: setAssumeSignalsOn, onQuoteChange: setPreviewQuote as any }}
               onChange={(next) => {
                 setDraft((d) => ({
                   ...d,
