@@ -12,6 +12,7 @@ import { assertSectionReady } from '@/lib/trading/validators/autoTrading';
 import { SettingComment } from './SettingComment';
 import { SymbolSelector } from './SymbolSelector';
 import { SymbolsControlPanel } from './SymbolsControlPanel';
+import { SymbolsPickerPanel } from './SymbolsPickerPanel';
 import { LogicSummary } from './LogicSummary';
 import { FooterActions } from './FooterActions';
 import { normalizeSymbol, uniqueAppend, removeSymbol } from '@/lib/trading/symbols';
@@ -613,6 +614,29 @@ export function AutoTradingSettingsForm() {
               </label>
               <span className="text-[11px] text-zinc-500">검색·추천·정규화/필터에 사용</span>
             </div>
+
+            {/* 신규: 심볼 검색/추가/제외 + 표형식 오버라이드 */}
+            <SymbolsPickerPanel
+              quote={symbolsQuote}
+              manual={draft.symbolSelection.manualSymbols}
+              excluded={draft.symbolSelection.excludedSymbols}
+              leverageOverrides={draft.symbolSelection.leverageOverrides}
+              positionOverrides={draft.symbolSelection.positionOverrides}
+              featureOverrides={(draft.symbolSelection as any).featureOverrides ?? {}}
+              onChange={(next) =>
+                setDraft((d) => ({
+                  ...d,
+                  symbolSelection: {
+                    ...d.symbolSelection,
+                    manualSymbols: next.manual,
+                    excludedSymbols: next.excluded,
+                    leverageOverrides: next.leverageOverrides,
+                    positionOverrides: next.positionOverrides,
+                    featureOverrides: next.featureOverrides
+                  }
+                }))
+              }
+            />
 
             {/* Ranking sort / autofill controls */}
             <div className="grid gap-6 md:grid-cols-2">
@@ -1868,7 +1892,8 @@ export function AutoTradingSettingsForm() {
                   </label>
                   <span className="ml-auto text-[11px] text-zinc-500">그룹 내 지표를 아래에서 편집하세요 (변경 시 자동 저장됩니다)</span>
                 </div>
-                <GroupListPanel
+                <div className={draft.entry[dir].immediate ? 'pointer-events-none opacity-40' : ''}>
+                  <GroupListPanel
                   value={ensureIndicators(draft.entry[dir].indicators)}
                   onChange={(next) => {
                     // 1) 로컬 드래프트 갱신
@@ -1881,6 +1906,7 @@ export function AutoTradingSettingsForm() {
                     updateIndicatorsRaw({ type: 'entry', direction: dir }, toNormalizedCompatIndicatorConditions(next));
                   }}
                 />
+                </div>
               </div>
             ))}
           </div>

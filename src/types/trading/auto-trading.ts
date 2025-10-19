@@ -325,6 +325,7 @@ export type SymbolSelection = {
   leverageMode: LeverageMode;
   leverageOverrides: Record<string, number>;
   positionOverrides?: Record<string, PositionPreference>;
+  featureOverrides?: Record<string, { scaleIn?: boolean; exit?: boolean; stopLoss?: boolean }>;
   maxListingAgeDays?: number | null;
   rankingSort?: RankingSort;
   autoFillRecheck?: boolean;

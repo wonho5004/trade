@@ -507,6 +507,25 @@ const normalizeSymbolSelection = (legacy: unknown): SymbolSelection => {
     });
   }
   merged.leverageOverrides = sanitizedOverrides;
+  // positionOverrides sanitize
+  const posOv: Record<string, 'long' | 'short' | 'both'> = {};
+  const posCand = (legacy as PlainObject).positionOverrides;
+  if (isPlainObject(posCand)) {
+    Object.entries(posCand).forEach(([k, v]) => {
+      const val = v === 'long' || v === 'short' || v === 'both' ? v : 'long';
+      posOv[k.toUpperCase()] = val;
+    });
+  }
+  merged.positionOverrides = posOv;
+  // featureOverrides sanitize
+  const featOv: Record<string, { scaleIn?: boolean; exit?: boolean; stopLoss?: boolean }> = {};
+  const featCand = (legacy as PlainObject).featureOverrides;
+  if (isPlainObject(featCand)) {
+    Object.entries(featCand).forEach(([k, v]) => {
+      if (isPlainObject(v)) featOv[k.toUpperCase()] = { scaleIn: !!(v as any).scaleIn, exit: !!(v as any).exit, stopLoss: !!(v as any).stopLoss };
+    });
+  }
+  merged.featureOverrides = featOv;
   return merged;
 };
 

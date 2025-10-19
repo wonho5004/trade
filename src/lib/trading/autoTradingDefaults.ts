@@ -365,6 +365,7 @@ export const createSymbolSelection = (): SymbolSelection => ({
   leverageMode: 'uniform',
   leverageOverrides: {},
   positionOverrides: {},
+  featureOverrides: {},
   maxListingAgeDays: null,
   rankingSort: 'alphabet',
   autoFillRecheck: false,
