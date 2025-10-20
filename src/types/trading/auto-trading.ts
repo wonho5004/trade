@@ -177,6 +177,52 @@ export type StatusLeafNode = {
   unit?: StatusUnit;
 };
 
+// Action nodes: describe executable trading actions attached to a condition group
+export type OrderSide = 'buy' | 'sell';
+export type OrderType = 'market' | 'limit';
+export type WalletBasisPref = 'wallet' | 'total' | 'free';
+
+export type BuyOrderConfig = {
+  kind: 'buy';
+  orderType: OrderType;
+  amountMode: 'usdt' | 'position_percent' | 'wallet_percent' | 'initial_percent' | 'min_notional';
+  asset?: 'USDT' | 'USDC';
+  usdt?: number;
+  positionPercent?: number; // 1~2000
+  walletBasis?: WalletBasisPref;
+  walletPercent?: number; // 0.01~100
+  initialPercent?: number; // 1~2000
+  limitPriceMode?: 'input' | 'indicator';
+  limitPrice?: number;
+  indicatorRefId?: string; // link to indicator node id
+};
+
+export type SellOrderConfig = {
+  kind: 'sell';
+  orderType: OrderType;
+  amountMode: 'usdt' | 'position_percent' | 'min_notional';
+  asset?: 'USDT' | 'USDC';
+  usdt?: number;
+  positionPercent?: number; // 1~100
+  limitPriceMode?: 'input' | 'indicator';
+  limitPrice?: number;
+  indicatorRefId?: string;
+};
+
+export type StopLossConfig = {
+  kind: 'stoploss';
+  priceMode: 'input' | 'indicator' | 'condition';
+  price?: number;
+  indicatorRefId?: string;
+  recreateOnMissing?: boolean; // 재생성 플래그
+};
+
+export type ActionLeafNode = {
+  kind: 'action';
+  id: string;
+  action: BuyOrderConfig | SellOrderConfig | StopLossConfig;
+};
+
 export type ConditionGroupNode = {
   kind: 'group';
   id: string;
@@ -184,7 +230,7 @@ export type ConditionGroupNode = {
   children: ConditionNode[];
 };
 
-export type ConditionNode = ConditionGroupNode | IndicatorLeafNode | CandleLeafNode | StatusLeafNode;
+export type ConditionNode = ConditionGroupNode | IndicatorLeafNode | CandleLeafNode | StatusLeafNode | ActionLeafNode;
 
 export type IndicatorConditions = {
   root: ConditionGroupNode;

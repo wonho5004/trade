@@ -8,20 +8,23 @@ import { collectGroupNodes, collectIndicatorNodes, ensureGroup, insertChild, rem
 import { IndicatorEditModal } from './IndicatorEditModal';
 import { normalizeSymbol as normalizePreviewSymbol } from '@/lib/trading/symbols';
 import { useSymbolValidation } from '@/hooks/useSymbolValidation';
-import { ConditionsPreview } from './ConditionsPreview';
+import { PreviewLauncher } from './PreviewLauncher';
 import { GroupEditModal } from './GroupEditModal';
 
 export function GroupListPanel({
   value,
   onChange,
-  preview
+  preview,
+  groupPreviewInModal = true
 }: {
   value: IndicatorConditions;
   onChange: (next: IndicatorConditions) => void;
   preview?: { symbol: string; symbolInput?: string; onSymbolChange?: (v: string) => void; quote?: 'USDT' | 'USDC'; datalistOptions?: string[]; interval: any; direction: 'long' | 'short'; indicatorSignals?: Record<string, boolean>; assumeSignalsOn?: boolean; onToggle?: (v: boolean) => void; onQuoteChange?: (q: 'USDT' | 'USDC') => void };
+  groupPreviewInModal?: boolean;
 }) {
   const [indicatorModal, setIndicatorModal] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
   const [groupModal, setGroupModal] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
+  const [previewEnabled, setPreviewEnabled] = useState(false);
 
   const root = value.root as unknown as ConditionGroupNode;
   const baseGroups = useMemo(
@@ -133,70 +136,24 @@ export function GroupListPanel({
 
   return (
     <div className="space-y-3">
-      {preview ? (
-        <div className="flex items-center justify-between">
-          <ConditionsPreview
-            conditions={value}
-            symbol={preview.symbol}
-            interval={preview.interval}
-            direction={preview.direction}
-            indicatorSignals={preview.indicatorSignals}
-          />
-          <div className="flex items-center gap-3 text-[11px] text-zinc-400">
-            <label className="flex items-center gap-2">
-              <span>심볼</span>
-              <input
-                value={preview.symbolInput ?? ''}
-                onChange={(e) => preview.onSymbolChange?.(e.target.value)}
-                onBlur={(e) => {
-                  const q = preview.quote ?? 'USDT';
-                  const norm = normalizePreviewSymbol(e.currentTarget.value || preview.symbol, q);
-                  preview.onSymbolChange?.(norm);
-                }}
-                placeholder={preview.symbol}
-                list="preview-symbols-inline"
-                className={`w-44 rounded bg-zinc-900 px-2 py-1 text-zinc-100 ${
-                  symValid?.valid === true ? 'border border-emerald-600' : symValid?.valid === false ? 'border border-rose-600' : 'border border-zinc-700'
-                }`}
-              />
-              <datalist id="preview-symbols-inline">
-                {(symValid?.suggestions ?? []).map((s) => (
-                  <option key={`pvi-${s}`} value={s} />
-                ))}
-              </datalist>
-              {/* 간단 유효성: 별도 훅 생략, 입력값 없으면 상태 미표시 */}
-              {symValid?.loading ? (
-                <span className="text-[10px] text-zinc-500">검증중…</span>
-              ) : preview.symbolInput ? (
-                <span className={`rounded border px-1 text-[10px] ${symValid?.valid ? 'border-emerald-700 text-emerald-300' : 'border-zinc-800 text-zinc-500'}`}>미리보기 {preview.symbol}</span>
-              ) : null}
-            </label>
-            <label className="flex items-center gap-2">
-              <span>쿼트</span>
-              <select
-                value={preview.quote ?? 'USDT'}
-                onChange={(e) => preview.onQuoteChange?.(e.target.value as 'USDT' | 'USDC')}
-                className="rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-[11px] text-zinc-100"
-              >
-                <option value="USDT">USDT</option>
-                <option value="USDC">USDC</option>
-              </select>
-            </label>
-            <label className="flex items-center gap-2">
-              <input type="checkbox" className="h-4 w-4" checked={!!preview.assumeSignalsOn} onChange={(e) => preview.onToggle?.(e.target.checked)} />
-              지표 신호 가정(ON)
-            </label>
-          </div>
-        </div>
-      ) : null}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2 text-[11px]">
           <span className="rounded border border-zinc-700 px-2 py-0.5 text-zinc-300">조건 그룹</span>
           <span className="rounded border border-zinc-700 px-2 py-0.5 text-zinc-400">그룹 간 OR(고정)</span>
+          {preview ? (
+            <PreviewLauncher
+              conditions={value}
+              symbol={preview.symbol}
+              interval={preview.interval}
+              direction={preview.direction}
+              indicatorSignals={undefined}
+            />
+          ) : null}
+          <button type="button" onClick={addGroup} className="rounded border border-emerald-500/60 px-3 py-1.5 text-xs font-semibold text-emerald-200">
+            조건 그룹 추가
+          </button>
         </div>
-        <button type="button" onClick={addGroup} className="rounded border border-emerald-500/60 px-3 py-1.5 text-xs font-semibold text-emerald-200">
-          조건 그룹 추가
-        </button>
+        <div className="flex items-center gap-2" />
       </div>
 
       {groups.length === 0 ? (
@@ -292,7 +249,7 @@ export function GroupListPanel({
         groupId={groupModal.id ?? ''}
         onChange={onChange}
         onClose={() => setGroupModal({ open: false, id: null })}
-        preview={preview ? {
+        preview={groupPreviewInModal && preview ? {
           symbol: preview.symbol,
           symbolInput: preview.symbolInput,
           onSymbolChange: preview.onSymbolChange,

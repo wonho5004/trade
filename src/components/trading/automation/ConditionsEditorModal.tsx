@@ -233,8 +233,23 @@ export function ConditionsEditorModal({
                 interval={previewCtx.interval}
                 direction={previewCtx.direction}
                 indicatorSignals={previewCtx.indicatorSignals}
+                enabled={false}
               />
               <div className="flex items-center gap-3 text-[11px] text-zinc-400">
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4"
+                    checked={(previewCtx as any).enabled ?? false}
+                    onChange={(e) => {
+                      // Consumers can manage enabled state via onToggle; if not provided, noop
+                      (previewCtx as any).onToggleEnabled?.(e.target.checked);
+                      // Fallback: dispatch custom event so parents can listen if needed
+                      window.dispatchEvent(new CustomEvent('preview-enabled-toggle', { detail: e.target.checked }));
+                    }}
+                  />
+                  프리뷰 활성화
+                </label>
                 <label className="flex items-center gap-2">
                   <span>심볼</span>
                   <input

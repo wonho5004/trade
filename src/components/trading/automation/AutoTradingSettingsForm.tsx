@@ -19,9 +19,12 @@ import { normalizeSymbol, uniqueAppend, removeSymbol } from '@/lib/trading/symbo
 import { isNameTaken, upsertLocalStrategyName, listLocalStrategyNames, removeLocalStrategyName } from '@/lib/trading/strategies/local';
 import { GroupListPanel } from './GroupListPanel';
 import { ConditionsPreview } from './ConditionsPreview';
+import { PreviewLauncher } from './PreviewLauncher';
 import { createIndicatorConditions, normalizeConditionTree } from '@/lib/trading/autoTradingDefaults';
+import { InfoTip } from '@/components/common/InfoTip';
 import { collectIndicatorNodes } from '@/lib/trading/conditionsTree';
 import { useSymbolValidation } from '@/hooks/useSymbolValidation';
+import { useUIPreferencesStore } from '@/stores/uiPreferencesStore';
 import { normalizeSymbol as toExchangeSymbol } from '@/lib/trading/symbols';
 
 type Draft = AutoTradingSettings;
@@ -49,7 +52,8 @@ export function AutoTradingSettingsForm() {
   const [filterStable, setFilterStable] = useState<boolean>(true);
   const [minVolume, setMinVolume] = useState<number>(0);
   const [minQuoteVolume, setMinQuoteVolume] = useState<number>(0);
-  const [excludeUnknownListing, setExcludeUnknownListing] = useState<boolean>(false);
+  const excludeUnknownListing = useUIPreferencesStore((s) => s.getSymbolsPickerPrefs().filters.hideUnknownListing);
+  const setUIPrefs = useUIPreferencesStore((s) => s.updateSymbolsPickerPrefs);
   const [bulkExcludeText, setBulkExcludeText] = useState<string>('');
   const [recentMax, setRecentMax] = useState<number>(12);
   const [recentRetentionDays, setRecentRetentionDays] = useState<number>(30);
@@ -258,7 +262,11 @@ export function AutoTradingSettingsForm() {
         Object.entries(draft.symbolSelection.excludedReasons ?? {}).map(([k, v]) => [normalizeSymbol(k, symbolsQuote), String(v || '')])
       ),
       leverageOverrides: normalizeOverrides(draft.symbolSelection.leverageOverrides),
-      positionOverrides: normalizePosOverrides(draft.symbolSelection.positionOverrides)
+      positionOverrides: normalizePosOverrides(draft.symbolSelection.positionOverrides),
+      maxListingAgeDays:
+        typeof draft.symbolSelection.maxListingAgeDays === 'number' && draft.symbolSelection.maxListingAgeDays > 0
+          ? draft.symbolSelection.maxListingAgeDays
+          : null
     } as const;
 
     // 최소 개수 검증: 랭킹이 비활성인 경우, 수동 선택 개수가 설정한 종목 수보다 적으면 오류
@@ -301,7 +309,8 @@ export function AutoTradingSettingsForm() {
         excludedSymbols: cleaned.excludedSymbols,
         excludedReasons: cleaned.excludedReasons,
         leverageOverrides: cleaned.leverageOverrides,
-        positionOverrides: cleaned.positionOverrides
+        positionOverrides: cleaned.positionOverrides,
+        maxListingAgeDays: cleaned.maxListingAgeDays
       };
       d.metadata.lastSavedAt = new Date().toISOString();
     });
@@ -548,11 +557,28 @@ export function AutoTradingSettingsForm() {
         <SectionFrame
           sectionKey="symbols"
           title="종목 선택 / 제외 & 레버리지"
-          description="종목 풀을 구성하고 기본 제외 목록과 레버리지 방식을 설정합니다."
+          description="종목 풀을 구성하고 레버리지/포지션 종목별 설정(기본보다 우선)을 적용합니다."
           isDirty={symbolsDirty}
           helpTitle="종목 선택 도움말"
           helpContent={helpContent.symbols}
           onSave={handleSaveSymbols}
+          onReset={() =>
+            updateSettings((d) => {
+              d.symbolSelection = {
+                ...d.symbolSelection,
+                manualSymbols: [],
+                excludedSymbols: [],
+                excludedReasons: {},
+                ranking: { volume: null, market_cap: null, top_gainers: null, top_losers: null } as any,
+                excludeTopGainers: null,
+                excludeTopLosers: null,
+                leverageOverrides: {},
+                positionOverrides: {},
+                featureOverrides: {}
+              } as any;
+              d.metadata.lastSavedAt = new Date().toISOString();
+            })
+          }
         >
           <div className="space-y-4">
             {/* Controls removed: 최근N/보관/최소 거래량/최소 거래대금/상장일 제외는 아래 패널로 이동 */}
@@ -627,7 +653,7 @@ export function AutoTradingSettingsForm() {
                   <input
                     type="checkbox"
                     checked={excludeUnknownListing}
-                    onChange={(e) => setExcludeUnknownListing(e.target.checked)}
+                    onChange={(e) => setUIPrefs({ filters: { hideUnknownListing: e.target.checked } as any })}
                     className="h-4 w-4 rounded border border-zinc-700 bg-zinc-900"
                   />
                   <span>상장일 정보 없음 제외</span>
@@ -1397,7 +1423,8 @@ export function AutoTradingSettingsForm() {
               </div>
             </div>
 
-            {/* Overrides */}
+            {/* Overrides (hidden) */}
+            {false && (
             <div className="space-y-2">
               <label className="flex items-center gap-2 text-xs text-zinc-300">
                 <span className="w-28 text-zinc-400">레버리지 모드</span>
@@ -1646,6 +1673,7 @@ export function AutoTradingSettingsForm() {
                 </div>
               </div>
             </div>
+            )}
           </div>
         </SectionFrame>
       </div>
@@ -1661,10 +1689,10 @@ export function AutoTradingSettingsForm() {
           helpContent={helpContent.basic}
           onSave={handleSaveBasic}
         >
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <label className="flex flex-col gap-1 text-xs text-zinc-300">
-                <span>로직명</span>
+          <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 text-xs text-zinc-300">
+            <label className="flex items-center gap-2">
+              <span className="w-20 text-zinc-400 inline-flex items-center gap-1">로직명 <InfoTip title="전략을 식별하기 위한 이름" /></span>
+              <div className="flex min-w-0 flex-1 items-center gap-2">
                 <input
                   type="text"
                   value={draft.logicName}
@@ -1676,49 +1704,114 @@ export function AutoTradingSettingsForm() {
                     setNameStatus({ checked: true, available });
                   }}
                   ref={logicNameRef}
-                  className={`rounded bg-zinc-900 px-3 py-2 text-sm text-zinc-100 ${
-                    (errors as any).basic.logicName ? 'border border-rose-500/70' : 'border border-zinc-700'
+                  className={`flex-1 rounded border bg-zinc-900 px-2 py-1 text-[12px] text-zinc-100 ${
+                    (errors as any).basic.logicName ? 'border-rose-500/70' : 'border-zinc-700'
                   }`}
                 />
-              </label>
-              <div className="flex items-center gap-2 text-[11px]">
                 <button
                   type="button"
                   onClick={() => {
                     const available = !isNameTaken(draft.logicName.trim());
                     setNameStatus({ checked: true, available });
                   }}
-                  className="rounded border border-zinc-700 px-2 py-1 text-zinc-300 hover:border-emerald-500/60 hover:text-emerald-200"
+                  className="rounded border border-zinc-700 px-2 py-1 text-[11px] text-zinc-300 hover:border-emerald-500/60 hover:text-emerald-200"
                 >
                   중복확인
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setSavedNames(listLocalStrategyNames())}
-                  className="rounded border border-zinc-700 px-2 py-1 text-zinc-300 hover:border-zinc-500"
-                >
-                  저장된 이름 새로고침
-                </button>
               </div>
-              {nameStatus?.checked ? (
-                <p className={`text-[11px] ${nameStatus.available ? 'text-emerald-300' : 'text-rose-400'}`}>
-                  {nameStatus.available ? '사용 가능한 이름입니다.' : '이미 사용 중인 이름입니다.'}
-                </p>
-              ) : null}
-              {savedNames.length > 0 ? (
-                <div className="mt-2 rounded border border-zinc-800 bg-zinc-950/60 p-2">
-                  <p className="mb-1 text-[11px] text-zinc-400">저장된 로직명</p>
+            </label>
+
+            <label className="flex items-center gap-2">
+              <span className="w-20 text-zinc-400 inline-flex items-center gap-1">데이터 프레임 <InfoTip title="캔들 인터벌(예: 15m, 1h)" /></span>
+              <select
+                value={draft.timeframe}
+                onChange={(e) => setDraft((d) => ({ ...d, timeframe: e.target.value as Draft['timeframe'] }))}
+                className="flex-1 rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-[12px] text-zinc-100"
+              >
+                {(['1m','3m','5m','15m','1h','4h','8h','12h','24h'] as const).map((tf) => (
+                  <option key={tf} value={tf}>{tf}</option>
+                ))}
+              </select>
+            </label>
+
+            <label className="flex items-center gap-2">
+              <span className="w-20 text-zinc-400 inline-flex items-center gap-1">레버리지 <InfoTip title="전역 기본 레버리지(종목별 오버라이드로 대체 가능)" /></span>
+              <input
+                type="number"
+                min={1}
+                max={125}
+                value={draft.leverage}
+                onChange={(e) => setDraft((d) => ({ ...d, leverage: Math.min(125, Math.max(1, Number(e.target.value) || 1)) }))}
+                ref={leverageRef}
+                className={`flex-1 rounded border bg-zinc-900 px-2 py-1 text-[12px] text-zinc-100 ${
+                  (errors as any).basic.leverage ? 'border-rose-500/70' : 'border-zinc-700'
+                }`}
+              />
+            </label>
+
+            <label className="flex items-center gap-2">
+              <span className="w-20 text-zinc-400 inline-flex items-center gap-1">종목 수 <InfoTip title="선택 목표 종목 개수" /></span>
+              <input
+                type="number"
+                min={1}
+                max={50}
+                value={draft.symbolCount}
+                onChange={(e) => setDraft((d) => ({ ...d, symbolCount: Math.min(50, Math.max(1, Number(e.target.value) || 1)) }))}
+                className="flex-1 rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-[12px] text-zinc-100"
+              />
+            </label>
+
+            <label className="flex items-center gap-2">
+              <span className="w-20 text-zinc-400 inline-flex items-center gap-1">자산 모드 <InfoTip title="Single: 단일 자산, Multi: 여러 자산 간 상쇄" /></span>
+              <select
+                value={draft.assetMode}
+                onChange={(e) => setDraft((d) => ({ ...d, assetMode: e.target.value as Draft['assetMode'] }))}
+                className="flex-1 rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-[12px] text-zinc-100"
+              >
+                <option value="single">Single-Asset</option>
+                <option value="multi">Multi-Assets</option>
+              </select>
+            </label>
+
+            <label className="flex items-center gap-2">
+              <span className="w-20 text-zinc-400 inline-flex items-center gap-1">포지션 모드 <InfoTip title="One-Way: 단일 방향, Hedge: 롱/숏 동시 보유" /></span>
+              <select
+                value={draft.positionMode}
+                onChange={(e) => setDraft((d) => ({ ...d, positionMode: e.target.value as Draft['positionMode'] }))}
+                className="flex-1 rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-[12px] text-zinc-100"
+              >
+                <option value="one_way">One-Way</option>
+                <option value="hedge">Hedge</option>
+              </select>
+            </label>
+
+            {nameStatus?.checked ? (
+              <p className={`col-span-full text-[11px] ${nameStatus.available ? 'text-emerald-300' : 'text-rose-400'}`}>
+                {nameStatus.available ? '사용 가능한 이름입니다.' : '이미 사용 중인 이름입니다.'}
+              </p>
+            ) : null}
+
+            {savedNames.length > 0 ? (
+              <details className="col-span-full rounded border border-zinc-800 bg-zinc-950/60 p-2 open:pb-2">
+                <summary className="cursor-pointer text-[11px] text-zinc-400">이름 관리</summary>
+                <div className="mt-1">
+                  <div className="mb-1 flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setSavedNames(listLocalStrategyNames())}
+                      className="rounded border border-zinc-700 px-2 py-0.5 text-[11px] text-zinc-300"
+                    >
+                      목록 새로고침
+                    </button>
+                  </div>
                   <ul className="space-y-1">
                     {savedNames.map((n) => (
                       <li key={n} className="flex items-center justify-between text-[11px] text-zinc-300">
                         <span className="truncate">{n}</span>
                         <button
                           type="button"
-                          onClick={() => {
-                            removeLocalStrategyName(n);
-                            setSavedNames(listLocalStrategyNames());
-                          }}
-                          className="rounded border border-zinc-700 px-2 py-0.5 text-rose-300 hover:border-rose-500/60"
+                          onClick={() => { removeLocalStrategyName(n); setSavedNames(listLocalStrategyNames()); }}
+                          className="rounded border border-zinc-700 px-2 py-0.5 text-rose-300"
                         >
                           삭제
                         </button>
@@ -1726,89 +1819,12 @@ export function AutoTradingSettingsForm() {
                     ))}
                   </ul>
                 </div>
-              ) : null}
-            </div>
-            <div className="space-y-2">
-              <label className="flex flex-col gap-1 text-xs text-zinc-300">
-                <span>데이터 프레임</span>
-                <select
-                  value={draft.timeframe}
-                  onChange={(e) => setDraft((d) => ({ ...d, timeframe: e.target.value as Draft['timeframe'] }))}
-                  className="rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
-                >
-                  {(['1m','3m','5m','15m','1h','4h','8h','12h','24h'] as const).map((tf) => (
-                    <option key={tf} value={tf}>{tf}</option>
-                  ))}
-                </select>
-              </label>
-              <label className="flex flex-col gap-1 text-xs text-zinc-300">
-                <span>레버리지</span>
-                <input
-                  type="number"
-                  min={1}
-                  max={125}
-                  value={draft.leverage}
-                  onChange={(e) =>
-                    setDraft((d) => ({ ...d, leverage: Math.min(125, Math.max(1, Number(e.target.value) || 1)) }))
-                  }
-                  ref={leverageRef}
-                  className={`rounded bg-zinc-900 px-3 py-2 text-sm text-zinc-100 ${
-                    (errors as any).basic.leverage ? 'border border-rose-500/70' : 'border border-zinc-700'
-                  }`}
-                />
-              </label>
-              <SettingComment>교차 마진 기준이며, 거래소 제한을 고려하세요.</SettingComment>
-            </div>
-            <div className="space-y-2">
-              <label className="flex flex-col gap-1 text-xs text-zinc-300">
-                <span>거래 종목 수</span>
-                <input
-                  type="number"
-                  min={1}
-                  max={50}
-                  value={draft.symbolCount}
-                  onChange={(e) =>
-                    setDraft((d) => ({ ...d, symbolCount: Math.min(50, Math.max(1, Number(e.target.value) || 1)) }))
-                  }
-                  className="rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
-                />
-              </label>
-              <SettingComment>분산/집중을 고려해 1~50개로 선택하세요.</SettingComment>
-            </div>
-          </div>
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <label className="flex flex-col gap-1 text-xs text-zinc-300">
-                <span>자산 모드</span>
-                <select
-                  value={draft.assetMode}
-                  onChange={(e) => setDraft((d) => ({ ...d, assetMode: e.target.value as Draft['assetMode'] }))}
-                  className="rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
-                >
-                  <option value="single">Single-Asset</option>
-                  <option value="multi">Multi-Assets</option>
-                </select>
-              </label>
-              <SettingComment>
-                Single-Asset: 동일 마진 자산 내 상쇄. Multi-Assets: 여러 증거금 자산 간 손익 상쇄. Multi는 교차 마진만 지원.
-              </SettingComment>
-            </div>
-            <div className="space-y-2">
-              <label className="flex flex-col gap-1 text-xs text-zinc-300">
-                <span>포지션 모드</span>
-                <select
-                  value={draft.positionMode}
-                  onChange={(e) => setDraft((d) => ({ ...d, positionMode: e.target.value as Draft['positionMode'] }))}
-                  className="rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
-                >
-                  <option value="one_way">One-Way</option>
-                  <option value="hedge">Hedge</option>
-                </select>
-              </label>
-              <SettingComment>
-                One-Way: 단일 방향 포지션. Hedge: 롱/숏 동시 보유 가능.
-              </SettingComment>
-            </div>
+              </details>
+            ) : null}
+
+            <p className="col-span-full text-[10px] text-zinc-500">
+              교차 마진/거래소 제한 고려 · 분산/집중에 맞춘 종목 수 선택
+            </p>
           </div>
         </SectionFrame>
       </div>
@@ -1854,56 +1870,18 @@ export function AutoTradingSettingsForm() {
                   </label>
                   <span className="ml-auto text-[11px] text-zinc-500">그룹 내 지표를 아래에서 편집하세요 (변경 시 자동 저장됩니다)</span>
                 </div>
-                <div className={draft.entry[dir].immediate ? 'pointer-events-none opacity-40' : ''}>
+                  <div className={draft.entry[dir].immediate ? 'pointer-events-none opacity-40' : ''}>
                   <div className="mb-2 flex items-center justify-between">
-                    <ConditionsPreview
-                      conditions={ensureIndicators(draft.entry[dir].indicators)}
-                      symbol={previewSymbol}
-                      interval={previewInterval as any}
-                      direction={dir}
-                      indicatorSignals={buildSignals(ensureIndicators(draft.entry[dir].indicators), assumeSignalsOn) as any}
-                    />
-                    <div className="flex items-center gap-3 text-[11px] text-zinc-400">
-                      <label className="flex items-center gap-2">
-                        <span>심볼</span>
-                        <input
-                          list="preview-symbols"
-                          value={previewSymbolInput}
-                          onChange={(e) => setPreviewSymbolInput(e.target.value)}
-                          onBlur={(e) => setPreviewSymbolInput(toExchangeSymbol(e.currentTarget.value || previewSymbol, previewQuote))}
-                          placeholder={previewSymbol}
-                          className={`w-44 rounded bg-zinc-900 px-2 py-1 text-zinc-100 ${
-                            previewSymbolValidation.valid === true
-                              ? 'border border-emerald-600'
-                              : previewSymbolValidation.valid === false
-                              ? 'border border-rose-600'
-                              : 'border border-zinc-700'
-                          }`}
-                        />
-                        <datalist id="preview-symbols">
-                          {previewDatalistOptions.map((s) => (
-                            <option key={`pv-${s}`} value={s} />
-                          ))}
-                        </datalist>
-                        <select
-                          value={previewQuote}
-                          onChange={(e) => setPreviewQuote(e.target.value as 'USDT' | 'USDC')}
-                          className="rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-zinc-100"
-                        >
-                          <option value="USDT">USDT</option>
-                          <option value="USDC">USDC</option>
-                        </select>
-                        {previewSymbolValidation.loading ? (
-                          <span className="text-[11px] text-zinc-500">검증중…</span>
-                        ) : previewSymbolValidation.valid === false ? (
-                          <span className="text-[11px] text-rose-400">유효하지 않은 심볼</span>
-                        ) : null}
-                      </label>
-                      <label className="flex items-center gap-2">
-                        <input type="checkbox" className="h-4 w-4" checked={assumeSignalsOn} onChange={(e) => setAssumeSignalsOn(e.target.checked)} />
-                        지표 신호 가정(ON)
-                      </label>
+                    <div className="flex items-center gap-2">
+                      <PreviewLauncher
+                        conditions={ensureIndicators(draft.entry[dir].indicators)}
+                        symbol={previewSymbol}
+                        interval={previewInterval as any}
+                        direction={dir}
+                        indicatorSignals={undefined}
+                      />
                     </div>
+                    <div className="flex items-center gap-3 text-[11px] text-zinc-400" />
                   </div>
                   <GroupListPanel
                   value={ensureIndicators(draft.entry[dir].indicators)}
@@ -1968,6 +1946,7 @@ export function AutoTradingSettingsForm() {
                 <GroupListPanel
                   value={ensureIndicators(draft.scaleIn[dir].indicators)}
                   preview={{ symbol: previewSymbol, symbolInput: previewSymbolInput, onSymbolChange: setPreviewSymbolInput, quote: previewQuote, datalistOptions: previewDatalistOptions, interval: previewInterval as any, direction: dir, indicatorSignals: buildSignals(ensureIndicators(draft.scaleIn[dir].indicators), assumeSignalsOn) as any, assumeSignalsOn, onToggle: setAssumeSignalsOn, onQuoteChange: setPreviewQuote as any }}
+                  groupPreviewInModal={false}
                   onChange={(next) => {
                     setDraft((d) => ({
                       ...d,

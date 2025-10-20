@@ -21,12 +21,16 @@ exports[`GroupListPanel snapshots renders group summary consistently 1`] = `
         그룹 간 OR(고정)
       </span>
     </div>
-    <button
-      class="rounded border border-emerald-500/60 px-3 py-1.5 text-xs font-semibold text-emerald-200"
-      type="button"
+    <div
+      class="flex items-center gap-2"
     >
-      조건 그룹 추가
-    </button>
+      <button
+        class="rounded border border-emerald-500/60 px-3 py-1.5 text-xs font-semibold text-emerald-200"
+        type="button"
+      >
+        조건 그룹 추가
+      </button>
+    </div>
   </div>
   <div
     class="space-y-3"

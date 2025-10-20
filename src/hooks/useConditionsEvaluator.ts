@@ -17,6 +17,7 @@ export type UseConditionsEvaluatorArgs = {
   direction: PositionDirection;
   indicatorSignals?: Record<string, boolean>;
   overrides?: Partial<EvaluationContext>;
+  enabled?: boolean;
 };
 
 export type UseConditionsEvaluatorState = {
@@ -30,7 +31,7 @@ export type UseConditionsEvaluatorState = {
 
 // Engine evaluator hook: subscribes to candles and evaluates conditions via worker (with sync fallback)
 export function useConditionsEvaluator(args: UseConditionsEvaluatorArgs): UseConditionsEvaluatorState {
-  const { conditions, symbol, interval, direction, indicatorSignals, overrides } = args;
+  const { conditions, symbol, interval, direction, indicatorSignals, overrides, enabled = true } = args;
   const [state, setState] = useState<UseConditionsEvaluatorState>({ ready: false, match: false, lastEvaluatedAt: null, context: null, error: null });
   const lastTwoRef = useRef<{ prev: KlineUpdate['candle'] | null; cur: KlineUpdate['candle'] | null }>({ prev: null, cur: null });
   const workerRef = useRef<EngineWorker | null>(null);
@@ -46,6 +47,7 @@ export function useConditionsEvaluator(args: UseConditionsEvaluatorArgs): UseCon
   const baseContext = useMemo<EvaluationContext>(() => ({ symbol, direction }), [symbol, direction]);
 
   useEffect(() => {
+    if (!enabled) return;
     // init worker lazily in browser
     if (typeof window === 'undefined') return;
     try {
@@ -59,10 +61,11 @@ export function useConditionsEvaluator(args: UseConditionsEvaluatorArgs): UseCon
       } catch {}
       workerRef.current = null;
     };
-  }, []);
+  }, [enabled]);
 
   // subscribe kline
   useEffect(() => {
+    if (!enabled) return;
     if (!symbol || !interval) return;
     let unsubscribe: (() => void) | null = null;
     let cancelled = false;
@@ -130,16 +133,17 @@ export function useConditionsEvaluator(args: UseConditionsEvaluatorArgs): UseCon
       try { unsubscribe?.(); } catch {}
       cancelled = true;
     };
-  }, [symbol, interval]);
+  }, [enabled, symbol, interval]);
 
   // re-evaluate when inputs change
   useEffect(() => {
+    if (!enabled) return;
     triggerEvaluate();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [conditions, direction, indicatorSignals, overrides]);
+  }, [enabled, conditions, direction, indicatorSignals, overrides]);
 
   const evaluateNow = () => {
-    if (!conditions) return;
+    if (!enabled || !conditions) return;
     const ctx: EvaluationContext = {
       ...baseContext,
       candleCurrent: lastTwoRef.current.cur ?? undefined,

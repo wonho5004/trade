@@ -11,6 +11,7 @@ type SectionFrameProps = {
   description?: string;
   isDirty?: boolean;
   onSave?: () => Promise<void | (() => void)> | void | (() => void);
+  onReset?: () => void;
   // 자동 저장 섹션에서 버튼을 항상 활성화(재검증/스냅샷 용도)
   forceEnableSave?: boolean;
   helpTitle?: string;
@@ -18,7 +19,7 @@ type SectionFrameProps = {
   children: ReactNode;
 };
 
-export function SectionFrame({ sectionKey, title, description, isDirty = false, onSave, forceEnableSave = false, helpTitle, helpContent, children }: SectionFrameProps) {
+export function SectionFrame({ sectionKey, title, description, isDirty = false, onSave, onReset, forceEnableSave = false, helpTitle, helpContent, children }: SectionFrameProps) {
   const isCollapsed = useUIPreferencesStore((s) => s.isCollapsed(sectionKey));
   const toggleCollapsed = useUIPreferencesStore((s) => s.toggleCollapsed);
   const setCollapsed = useUIPreferencesStore((s) => s.setCollapsed);
@@ -88,6 +89,15 @@ export function SectionFrame({ sectionKey, title, description, isDirty = false, 
         </button>
         <div className="flex items-center gap-2">
           {helpContent ? <HelpButton onClick={() => setShowHelp(true)} /> : null}
+          {onReset ? (
+            <button
+              type="button"
+              onClick={onReset}
+              className="rounded border border-zinc-700 px-3 py-1.5 text-xs font-semibold text-zinc-300 hover:text-zinc-100"
+            >
+              초기화
+            </button>
+          ) : null}
           {onSave ? (
           <button
             type="button"
