@@ -1,9 +1,9 @@
 export type AssetMode = 'single' | 'multi';
 export type PositionMode = 'one_way' | 'hedge';
 export type PositionPreference = 'long' | 'short' | 'both';
-export type MarginBasis = 'wallet' | 'total' | 'tree';
+export type MarginBasis = 'wallet' | 'total' | 'free' | 'tree';
 export type InitialMarginMode = 'per_symbol_percentage' | 'all_symbols_percentage' | 'min_notional' | 'usdt_amount';
-export type ScaleInBudgetMode = 'balance_percentage' | 'margin_percentage' | 'min_notional';
+export type ScaleInBudgetMode = 'usdt_amount' | 'balance_percentage' | 'per_symbol_percentage' | 'min_notional';
 export type TimeframeOption =
   | '1m'
   | '3m'
@@ -195,6 +195,9 @@ export type BuyOrderConfig = {
   limitPriceMode?: 'input' | 'indicator';
   limitPrice?: number;
   indicatorRefId?: string; // link to indicator node id
+  // optional execution flags (override UI)
+  reduceOnly?: boolean;
+  positionSide?: 'BOTH' | 'LONG' | 'SHORT';
 };
 
 export type SellOrderConfig = {
@@ -207,6 +210,8 @@ export type SellOrderConfig = {
   limitPriceMode?: 'input' | 'indicator';
   limitPrice?: number;
   indicatorRefId?: string;
+  reduceOnly?: boolean;
+  positionSide?: 'BOTH' | 'LONG' | 'SHORT';
 };
 
 export type StopLossConfig = {
@@ -215,6 +220,9 @@ export type StopLossConfig = {
   price?: number;
   indicatorRefId?: string;
   recreateOnMissing?: boolean; // 재생성 플래그
+  reduceOnly?: boolean;
+  workingType?: 'MARK_PRICE' | 'CONTRACT_PRICE';
+  positionSide?: 'BOTH' | 'LONG' | 'SHORT';
 };
 
 export type ActionLeafNode = {
@@ -274,6 +282,8 @@ export type ScaleInBudget = {
   basis: MarginBasis;
   percentage: number;
   minNotional: number;
+  usdtAmount?: number;
+  asset?: 'USDT' | 'USDC';
 };
 
 export type InitialMarginSetting = {
@@ -282,6 +292,7 @@ export type InitialMarginSetting = {
   percentage: number;
   minNotional: number;
   usdtAmount: number;
+  asset?: 'USDT' | 'USDC';
 };
 
 export type CapitalSettings = {
@@ -293,6 +304,22 @@ export type CapitalSettings = {
   initialMargin: InitialMarginSetting;
   scaleInBudget: ScaleInBudget;
   scaleInLimit: ScaleInLimit;
+  useMinNotionalFallback?: boolean;
+  hedgeBudget?: {
+    separateByDirection: boolean;
+    long: HedgeBudgetDirection;
+    short: HedgeBudgetDirection;
+  };
+};
+
+export type HedgeBudgetDirection = {
+  mode: 'usdt' | 'balance_percentage' | 'per_symbol_percentage' | 'position_percent' | 'initial_percent' | 'min_notional';
+  asset?: 'USDT' | 'USDC';
+  amount?: number; // for usdt
+  basis?: MarginBasis; // for balance_percentage/per_symbol_percentage
+  percentage?: number; // percent value
+  perSymbol?: boolean; // when basis percentage is per-symbol
+  minNotional?: number; // for min_notional
 };
 
 export type ScaleInDirectionSettings = {

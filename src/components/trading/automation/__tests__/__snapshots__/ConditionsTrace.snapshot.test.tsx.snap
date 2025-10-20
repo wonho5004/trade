@@ -106,5 +106,17 @@ exports[`ConditionsTrace snapshots renders indicator/status/candle summary consi
       </ul>
     </div>
   </div>
+  <div>
+    <p
+      class="mb-1 text-zinc-400"
+    >
+      액션(프리뷰)
+    </p>
+    <p
+      class="text-zinc-500"
+    >
+      없음
+    </p>
+  </div>
 </div>
 `;

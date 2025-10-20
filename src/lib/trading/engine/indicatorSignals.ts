@@ -259,6 +259,76 @@ export function buildIndicatorSignalsFromSeries(
   return signals;
 }
 
+// Build numeric indicator series per indicator leaf id for use in priceResolver
+export function buildIndicatorNumericSeries(
+  conditions: IndicatorConditions,
+  series: { closes: number[]; highs: number[]; lows: number[] }
+): Record<string, number[]> {
+  const root = (conditions.root as any) || conditions;
+  const nodes = collectIndicatorNodes(root);
+  const { closes, highs, lows } = series;
+  const out: Record<string, number[]> = {};
+  for (const node of nodes) {
+    const type = node.indicator.type as string;
+    try {
+      if (type === 'ma') {
+        const period = Math.max(1, Number((node.indicator.config as any)?.period) || 20);
+        out[node.id] = sma(closes, period);
+      } else if (type === 'rsi') {
+        const cfg = node.indicator.config as any;
+        const period = Math.max(2, Number(cfg?.period) || 14);
+        const method = String(cfg?.smoothing || 'sma').toLowerCase() as 'sma' | 'ema';
+        out[node.id] = rsi(closes, period, method);
+      } else if (type === 'bollinger') {
+        const cfg = node.indicator.config as any;
+        const len = Math.max(2, Number(cfg?.length) || 20);
+        const deviation = std(closes, len);
+        const mean = sma(closes, len);
+        const sd = Number(cfg?.standardDeviation) || 2;
+        const band = (cfg?.band || 'middle') as string;
+        if (band === 'upper') out[node.id] = mean.map((m, i) => m + sd * deviation[i]);
+        else if (band === 'lower') out[node.id] = mean.map((m, i) => m - sd * deviation[i]);
+        else out[node.id] = mean; // middle
+      } else if (type === 'macd') {
+        const cfg = node.indicator.config as any;
+        const fast = Number(cfg?.fast) || 12;
+        const slow = Number(cfg?.slow) || 26;
+        const signal = Number(cfg?.signal) || 9;
+        const method = (cfg?.method || 'EMA') as 'EMA' | 'SMA';
+        const m = macdSeries(closes, fast, slow, signal, method);
+        out[node.id] = m.macd; // primary
+      } else if (type === 'dmi') {
+        const cfg = node.indicator.config as any;
+        const diP = Math.max(1, Number(cfg?.diPeriod) || 14);
+        const adxP = Math.max(1, Number(cfg?.adxPeriod) || 14);
+        // approximate ADX series using compute-like smoother
+        // reuse computeDmiSnapshot logic on sliding window — but lightweight approximation here
+        const n = closes.length;
+        const highsArr = highs.slice();
+        const lowsArr = lows.slice();
+        const adxSeries: number[] = new Array(n).fill(NaN);
+        for (let i = diP + adxP + 1; i < n; i++) {
+          const windowHighs = highsArr.slice(0, i + 1);
+          const windowLows = lowsArr.slice(0, i + 1);
+          const windowCloses = closes.slice(0, i + 1);
+          const snap = computeDmiSnapshot(
+            windowHighs.map((h, k) => ({ high: h, low: windowLows[k], close: windowCloses[k] })) as any,
+            diP,
+            adxP
+          );
+          adxSeries[i] = snap ? snap.adx : NaN;
+        }
+        out[node.id] = adxSeries;
+      } else {
+        out[node.id] = new Array(closes.length).fill(NaN);
+      }
+    } catch {
+      out[node.id] = new Array(closes.length).fill(NaN);
+    }
+  }
+  return out;
+}
+
 export function buildIndicatorSignals(conditions: IndicatorConditions, candles: Candle[]): Record<string, boolean> {
   const closes = candles.map((c) => c.close);
   const highs = candles.map((c) => c.high);

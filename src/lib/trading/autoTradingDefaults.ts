@@ -253,14 +253,17 @@ const createInitialMarginSetting = (): InitialMarginSetting => ({
   mode: 'per_symbol_percentage',
   percentage: 5,
   minNotional: 0,
-  usdtAmount: 0
+  usdtAmount: 0,
+  asset: 'USDT'
 });
 
 const createScaleInBudget = (): ScaleInBudget => ({
   mode: 'balance_percentage',
   basis: 'wallet',
   percentage: 5,
-  minNotional: 0
+  minNotional: 0,
+  usdtAmount: 0,
+  asset: 'USDT'
 });
 
 const createScaleInLimit = (): ScaleInLimit => ({
@@ -290,7 +293,13 @@ export const createCapitalSettings = (): CapitalSettings => ({
   },
   initialMargin: createInitialMarginSetting(),
   scaleInBudget: createScaleInBudget(),
-  scaleInLimit: createScaleInLimit()
+  scaleInLimit: createScaleInLimit(),
+  useMinNotionalFallback: true,
+  hedgeBudget: {
+    separateByDirection: false,
+    long: { mode: 'position_percent', percentage: 100 },
+    short: { mode: 'position_percent', percentage: 100 }
+  }
 });
 
 export const createEntryDirectionSettings = (direction: PositionDirection): EntryDirectionSettings => ({

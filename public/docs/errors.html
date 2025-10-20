@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>오류 안내(자동매매)</title>
+    <style>
+      body{font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica Neue, Arial, "Apple Color Emoji", "Segoe UI Emoji"; background:#0b0b0c; color:#e5e7eb; line-height:1.6;}
+      .wrap{max-width:900px; margin:24px auto; padding:0 16px;}
+      h1{font-size:22px; margin:0 0 12px}
+      h2{font-size:18px; margin:24px 0 8px}
+      code{background:#111217; padding:2px 4px; border-radius:4px;}
+      .card{border:1px solid #27272a; border-radius:8px; padding:12px; margin:12px 0; background:#0f0f13}
+      .code{color:#93c5fd}
+      a{color:#60a5fa}
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <h1>자동매매 오류 안내</h1>
+      <p>서버/거래소 오류코드에 대한 설명과 조치 가이드입니다. 프리뷰/전송 결과의 코드 라벨을 클릭하면 이 페이지로 이동합니다.</p>
+
+      <div class="card">
+        <h2>예시: 주문 Payload</h2>
+        <pre><code>{
+  "symbol": "BTCUSDT",
+  "orders": [
+    { "id":"e1", "type":"LIMIT", "side":"BUY", "price": 63000, "quantity": 0.002, "reduceOnly": false, "positionSide":"BOTH" },
+    { "id":"s1", "type":"STOP_MARKET", "side":"SELL", "stopPrice": 61000, "reduceOnly": true, "workingType":"MARK_PRICE", "positionSide":"BOTH" }
+  ],
+  "dryRun": true,
+  "safety": { "maxOrders": 10, "maxNotional": 2000 },
+  "positionMode": "one_way"
+}</code></pre>
+        <p class="text-zinc-400">실전 전송에서는 <code>dryRun</code>을 <code>false</code>로 설정합니다.</p>
+      </div>
+
+      <div class="card">
+        <h2>정밀도/최소노미널 계산</h2>
+        <ul>
+          <li><b>가격 반올림:</b> <code>pricePrecision</code> 자릿수로 반올림(예: 63000.123 → 63000.12)</li>
+          <li><b>수량 반올림:</b> <code>quantityPrecision</code> 자릿수로 반올림(예: 0.002345 → 0.0023)</li>
+          <li><b>최소 노미널:</b> <code>price * qty ≥ minNotional</code> 만족해야 함</li>
+        </ul>
+        <p class="text-zinc-400">심볼 제약은 <code>/api/trading/binance/futures-symbols</code> 응답을 참고하세요.</p>
+      </div>
+
+      <div id="FILTER_NOTIONAL" class="card">
+        <h2><span class="code">FILTER_NOTIONAL</span> — 최소 주문 금액 미달</h2>
+        <p>주문 금액이 심볼의 최소 노미널 제한에 미달했습니다.</p>
+        <ul>
+          <li>수량/금액을 늘리거나 레버리지를 조정하세요.</li>
+          <li>심볼 제약(최소 주문 금액/수량)을 확인하세요.</li>
+        </ul>
+      </div>
+
+      <div id="INSUFFICIENT_MARGIN" class="card">
+        <h2><span class="code">INSUFFICIENT_MARGIN</span> — 증거금 부족</h2>
+        <p>가용 증거금이 부족하여 주문이 거부되었습니다.</p>
+        <ul>
+          <li>주문 금액 축소 또는 레버리지 하향.</li>
+          <li>지갑 USDT 잔고와 포지션 노미널 확인.</li>
+        </ul>
+      </div>
+
+      <div id="REDUCE_ONLY_REJECTED" class="card">
+        <h2><span class="code">REDUCE_ONLY_REJECTED</span> — Reduce-Only 거부</h2>
+        <p>리듀스 온리 옵션으로 인해 신규 포지션 확대가 제한되었습니다.</p>
+        <ul>
+          <li>옵션 해제 또는 수량 조정.</li>
+        </ul>
+      </div>
+
+      <div id="POSITION_MODE_MISMATCH" class="card">
+        <h2><span class="code">POSITION_MODE_MISMATCH</span> — 포지션 모드 불일치</h2>
+        <p>현재 계정의 포지션 모드와 주문의 <code>positionSide</code>가 일치하지 않습니다.</p>
+        <ul>
+          <li>One-Way: <code>positionSide=BOTH</code> 사용</li>
+          <li>Hedge: <code>positionSide=LONG|SHORT</code> 사용</li>
+        </ul>
+      </div>
+
+      <div id="INVALID_PRECISION" class="card">
+        <h2><span class="code">INVALID_PRECISION</span> — 가격/수량 정밀도 오류</h2>
+        <p>가격 또는 수량의 소수 자릿수가 심볼 제약을 벗어났습니다.</p>
+        <ul>
+          <li>심볼 <code>pricePrecision</code>/<code>quantityPrecision</code>에 맞춰 반올림.</li>
+        </ul>
+        <p class="text-zinc-400">스탑/리밋 모두 동일하게 적용됩니다.</p>
+      </div>
+
+      <div class="card">
+        <h2>BTCUSDT 예시(선물)</h2>
+        <ul>
+          <li><b>pricePrecision:</b> 2 → 가격은 소수점 둘째 자리까지(예: 63000.12)</li>
+          <li><b>quantityPrecision:</b> 3 → 수량은 소수점 셋째 자리까지(예: 0.002)</li>
+          <li><b>minNotional:</b> 5 → <code>price*qty ≥ 5</code> 충족 필요</li>
+        </ul>
+        <p>
+          예: <code>price=63000.12</code>, <code>qty=0.00005</code> → <code>3.15</code>로 최소 금액 미달(FILTER_NOTIONAL). 수량을 <code>0.0001</code> 이상으로 맞추거나 레버리지를 조정하세요.
+        </p>
+      </div>
+
+      <div id="INVALID_WORKING_TYPE" class="card">
+        <h2><span class="code">INVALID_WORKING_TYPE</span> — 스탑 기준 오류</h2>
+        <p>스탑 주문의 기준(표시/계약 가격)이 잘못 설정되었습니다.</p>
+        <ul>
+          <li><code>workingType=MARK_PRICE</code> 또는 <code>CONTRACT_PRICE</code> 확인.</li>
+        </ul>
+      </div>
+
+      <div id="SAFETY_LIMIT" class="card">
+        <h2><span class="code">SAFETY_LIMIT</span> — 안전장치 한도 초과</h2>
+        <p>주문 수 또는 1건 최대 금액 제한을 초과했습니다.</p>
+        <ul>
+          <li>설정의 <code>maxOrders</code>/<code>maxNotional</code> 조정.</li>
+        </ul>
+      </div>
+
+      <div id="INVALID_INPUT" class="card">
+        <h2><span class="code">INVALID_INPUT</span> — 입력값 오류</h2>
+        <p>필수 파라미터 누락 또는 형식 오류.</p>
+      </div>
+
+      <div id="UNSUPPORTED_TYPE" class="card">
+        <h2><span class="code">UNSUPPORTED_TYPE</span> — 미지원 주문 타입</h2>
+        <p>아직 지원하지 않는 주문 타입입니다.</p>
+      </div>
+    </div>
+  </body>
+  </html>

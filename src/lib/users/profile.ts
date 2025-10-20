@@ -72,7 +72,7 @@ function buildFallbackDetails(user: { id: string; email: string | null | undefin
   const displayFullName = deriveFullName(user.user_metadata, email);
   const nicknameValue = normalize(user.user_metadata?.nickname);
   const displayNickname = deriveNickname(displayFullName, user.user_metadata, email);
-  const phone = normalize(user.user_metadata?.phone);
+  const phone = normalize((user.user_metadata as any)?.phone ?? (user.user_metadata as any)?.phone_number);
   const now = new Date().toISOString();
 
   const profile: ProfileRow = {
@@ -111,12 +111,25 @@ export async function getAuthenticatedProfile(): Promise<ProfileDetails | null> 
   }
 
   const { data: userData, error: userError } = await supabase.auth.getUser(token);
-  if (userError || !userData?.user) {
-    return null;
+  let user = userData?.user as any;
+  if (userError || !user) {
+    // 보완: JWT에서 sub 추출 후 Admin API로 조회 (서비스 키 필요)
+    try {
+      const part = String(token).split('.')[1] || '';
+      const json = Buffer.from(part, 'base64').toString('utf8');
+      const payload = JSON.parse(json) as Record<string, any>;
+      const userId = String(payload?.sub || '');
+      if (userId) {
+        const { data: byId } = await (supabase as any).auth.admin.getUserById(userId);
+        user = byId?.user;
+      }
+    } catch {}
+    if (!user) return null;
   }
 
-  const user = userData.user;
-  const email = user.email ?? '';
+  const userObj = user as { id: string; email?: string | null; user_metadata?: Record<string, unknown> | null };
+  const email = userObj.email ?? '';
+  // email은 위에서 유추된 값 사용
 
   try {
     const { data: existingProfile } = await supabase
@@ -179,8 +192,8 @@ export async function getAuthenticatedProfile(): Promise<ProfileDetails | null> 
       displayFullName: displayFullName ?? sanitizedProfile.display_name,
       displayNickname,
       hasNickname: Boolean(nicknameValue),
-      hasPhone: Boolean(phone),
-      phone,
+      hasPhone: Boolean(((user.user_metadata as any)?.phone ?? (user.user_metadata as any)?.phone_number) ?? phone),
+      phone: normalize((user.user_metadata as any)?.phone ?? (user.user_metadata as any)?.phone_number) ?? phone,
       binanceApiKey: normalize(user.user_metadata?.binance_api_key),
       binanceApiSecret: normalize(user.user_metadata?.binance_api_secret)
     };

@@ -9,6 +9,26 @@ export const helpContent = {
       </ul>
     </div>
   ),
+  capital: (
+    <div>
+      <p>투자 자금과 최초/추가 매수 금액을 설정합니다.</p>
+      <ol className="list-decimal space-y-1 pl-5">
+        <li>쿼트 USDT/USDC는 동시 거래가 불가합니다.</li>
+        <li>투자 금액을 과도하게 높이면 청산(Margin call) 위험이 커집니다.</li>
+        <li>너무 낮으면 거래소 최소 주문 단위 미만으로 주문이 취소될 수 있습니다.</li>
+        <li>지갑잔고는 Wallet/Total/Free로 구분됩니다.
+          <ul className="list-disc pl-5">
+            <li>Wallet: 미실현손익 미반영 기준잔고</li>
+            <li>Total: 실현/미실현 반영(포지션 마진 포함)</li>
+            <li>Free: 주문에 활용 가능한 여유잔고</li>
+          </ul>
+        </li>
+        <li>자금은 적절한 배분이 중요합니다. 여유 증거금을 확보하세요.</li>
+        <li>매수 횟수 계산 시 최초 매수는 1회로 간주합니다.</li>
+        <li>헤지(양방향)에서는 최초 매수만 개별 금액, 이후는 추가 매수 기준 적용됩니다.</li>
+      </ol>
+    </div>
+  ),
   symbols: (
     <div>
       <p>수동 심볼 선택 또는 선별 기준으로 거래 풀을 구성합니다.</p>
@@ -55,4 +75,3 @@ export const helpContent = {
     </div>
   )
 };
-

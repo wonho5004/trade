@@ -21,6 +21,7 @@ import { GroupListPanel } from './GroupListPanel';
 import { ConditionsPreview } from './ConditionsPreview';
 import { PreviewLauncher } from './PreviewLauncher';
 import { createIndicatorConditions, normalizeConditionTree } from '@/lib/trading/autoTradingDefaults';
+import { CapitalSettingsPanel } from './CapitalSettingsPanel';
 import { InfoTip } from '@/components/common/InfoTip';
 import { collectIndicatorNodes } from '@/lib/trading/conditionsTree';
 import { useSymbolValidation } from '@/hooks/useSymbolValidation';
@@ -122,6 +123,25 @@ export function AutoTradingSettingsForm() {
     (previewSymbolValidation.suggestions || []).forEach((s) => m.add(s));
     return Array.from(m).slice(0, 50);
   }, [draft.symbolSelection.manualSymbols, previewSymbolValidation.suggestions]);
+
+  // Global navigation from preview (chips) → expand & scroll to section
+  useEffect(() => {
+    const handler = (e: any) => {
+      try {
+        const key = String(e?.detail || '');
+        if (!key) return;
+        // Expand via UI store
+        try {
+          const mod = require('@/stores/uiPreferencesStore');
+          mod.useUIPreferencesStore?.getState?.().setCollapsed(key, false);
+        } catch {}
+        const el = document.getElementById(`section-${key}`);
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      } catch {}
+    };
+    window.addEventListener('jump-to-section', handler as any);
+    return () => window.removeEventListener('jump-to-section', handler as any);
+  }, []);
   const buildSignals = (conds: any, on: boolean) => {
     try {
       if (!on) return undefined;
@@ -553,7 +573,7 @@ export function AutoTradingSettingsForm() {
   return (
     <div className="flex flex-col gap-5">
       {/* Symbols section */}
-      <div className="order-2">
+      <div className="order-3">
         <SectionFrame
           sectionKey="symbols"
           title="종목 선택 / 제외 & 레버리지"
@@ -1783,6 +1803,7 @@ export function AutoTradingSettingsForm() {
                 <option value="one_way">One-Way</option>
                 <option value="hedge">Hedge</option>
               </select>
+              <ServerModeBadge />
             </label>
 
             {nameStatus?.checked ? (
@@ -1829,8 +1850,33 @@ export function AutoTradingSettingsForm() {
         </SectionFrame>
       </div>
 
+      {/* Capital (투자 자금) section */}
+      <div className="order-2">
+        <SectionFrame
+          sectionKey="capital"
+          title="투자 자금 설정"
+          description="쿼트/투자금/최초·추가 매수 금액과 한도를 설정합니다."
+          isDirty={useSectionDirtyFlag(settings.capital, draft.capital)}
+          helpTitle="투자 자금 설정"
+          helpContent={helpContent.capital}
+          onSave={async () => {
+            const prev = settings.capital;
+            updateSettings((d) => { d.capital = draft.capital; d.metadata.lastSavedAt = new Date().toISOString(); });
+            return () => { setDraft((dr) => ({ ...dr, capital: prev })); updateSettings((d) => { d.capital = prev; d.metadata.lastSavedAt = new Date().toISOString(); }); };
+          }}
+        >
+          <div className="space-y-3">
+            <CapitalSettingsPanel
+              capital={draft.capital as any}
+              symbolCount={draft.symbolCount}
+              onChange={(next) => setDraft((d) => ({ ...d, capital: next as any }))}
+            />
+          </div>
+        </SectionFrame>
+      </div>
+
       {/* Entry (매수) section */}
-      <div className="order-3">
+      <div className="order-4">
         <SectionFrame
           sectionKey="entry"
           title="진입(매수) 설정"
@@ -1904,7 +1950,7 @@ export function AutoTradingSettingsForm() {
       </div>
 
       {/* Scale-in section */}
-      <div className="order-4">
+      <div className="order-5">
         <SectionFrame
           sectionKey="scaleIn"
           title="추가매수 설정"
@@ -2009,7 +2055,7 @@ export function AutoTradingSettingsForm() {
                 />
                 <GroupListPanel
                   value={ensureIndicators(draft.exit[dir].indicators)}
-                  preview={{ symbol: previewSymbol, symbolInput: previewSymbolInput, onSymbolChange: setPreviewSymbolInput, quote: previewQuote, datalistOptions: previewDatalistOptions, interval: previewInterval as any, direction: dir, indicatorSignals: buildSignals(ensureIndicators(draft.exit[dir].indicators), assumeSignalsOn) as any, assumeSignalsOn, onToggle: setAssumeSignalsOn, onQuoteChange: setPreviewQuote as any }}
+                  preview={{ symbol: previewSymbol, symbolInput: previewSymbolInput, onSymbolChange: setPreviewSymbolInput, quote: previewQuote, datalistOptions: previewDatalistOptions, interval: previewInterval as any, direction: dir, indicatorSignals: buildSignals(ensureIndicators(draft.exit[dir].indicators), assumeSignalsOn) as any, assumeSignalsOn, onToggle: setAssumeSignalsOn, onQuoteChange: setPreviewQuote as any, enabledDefault: false }}
                   onChange={(next) => {
                     setDraft((d) => ({
                       ...d,
@@ -2025,7 +2071,7 @@ export function AutoTradingSettingsForm() {
       </div>
 
       {/* Hedge activation section */}
-      <div className="order-7">
+      <div className="order-8">
         <SectionFrame
           sectionKey="hedge"
           title="헤지 모드 설정"
@@ -2174,12 +2220,32 @@ export function AutoTradingSettingsForm() {
       </div>
 
       {/* Footer */}
-      <div className="order-8">
+      <div className="order-10">
         <LogicSummary settings={draft} />
       </div>
-      <div className="order-9">
+      <div className="order-11">
         <FooterActions />
       </div>
     </div>
   );
+}
+
+function ServerModeBadge() {
+  const [serverMode, setServerMode] = useState<'one_way' | 'hedge' | 'unknown'>('unknown');
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const res = await fetch('/api/trading/binance/position-mode');
+        const json = await res.json();
+        if (!alive) return;
+        if (json?.ok && (json.positionMode === 'one_way' || json.positionMode === 'hedge')) setServerMode(json.positionMode);
+      } catch {
+        /* noop */
+      }
+    })();
+    return () => { alive = false; };
+  }, []);
+  if (serverMode === 'unknown') return <span className="text-[11px] text-zinc-500">서버 모드 알 수 없음</span>;
+  return <span className="text-[11px] text-zinc-400">서버 모드: {serverMode === 'one_way' ? 'One-Way' : 'Hedge'}</span>;
 }

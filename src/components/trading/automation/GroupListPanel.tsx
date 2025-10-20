@@ -19,7 +19,7 @@ export function GroupListPanel({
 }: {
   value: IndicatorConditions;
   onChange: (next: IndicatorConditions) => void;
-  preview?: { symbol: string; symbolInput?: string; onSymbolChange?: (v: string) => void; quote?: 'USDT' | 'USDC'; datalistOptions?: string[]; interval: any; direction: 'long' | 'short'; indicatorSignals?: Record<string, boolean>; assumeSignalsOn?: boolean; onToggle?: (v: boolean) => void; onQuoteChange?: (q: 'USDT' | 'USDC') => void };
+  preview?: { symbol: string; symbolInput?: string; onSymbolChange?: (v: string) => void; quote?: 'USDT' | 'USDC'; datalistOptions?: string[]; interval: any; direction: 'long' | 'short'; indicatorSignals?: Record<string, boolean>; assumeSignalsOn?: boolean; onToggle?: (v: boolean) => void; onQuoteChange?: (q: 'USDT' | 'USDC') => void; enabledDefault?: boolean };
   groupPreviewInModal?: boolean;
 }) {
   const [indicatorModal, setIndicatorModal] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
@@ -258,7 +258,8 @@ export function GroupListPanel({
           direction: preview.direction,
           indicatorSignals: preview.indicatorSignals,
           assumeSignalsOn: preview.assumeSignalsOn,
-          onToggle: preview.onToggle
+          onToggle: preview.onToggle,
+          enabledDefault: preview.enabledDefault
         } : undefined}
       />
     </div>

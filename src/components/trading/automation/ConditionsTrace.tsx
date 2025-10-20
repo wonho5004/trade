@@ -1,17 +1,21 @@
 "use client";
 
 import { evaluateWithTrace, toExecutablePlan } from '@/lib/trading/engine/conditions';
+import { buildIndicatorNumericSeries } from '@/lib/trading/engine/indicatorSignals';
+import { buildActionIntents } from '@/lib/trading/engine/actions';
 import type { IndicatorConditions, ConditionNode, IndicatorLeafNode } from '@/types/trading/auto-trading';
 import type { EvaluationContext } from '@/lib/trading/engine/conditions';
 
 export function ConditionsTrace({
   conditions,
   context,
-  indicatorSignals
+  indicatorSignals,
+  seriesTail
 }: {
   conditions: IndicatorConditions | undefined;
   context: EvaluationContext;
   indicatorSignals?: Record<string, boolean>;
+  seriesTail?: { closes: number[]; highs: number[]; lows: number[] };
 }) {
   if (!conditions) return null;
   const fmt = (n: any) => {
@@ -22,6 +26,15 @@ export function ConditionsTrace({
   };
   const { result, trace } = evaluateWithTrace(conditions, context, { indicatorSignals });
   const plan = toExecutablePlan(conditions);
+  const actionsPreview = (() => {
+    try {
+      if (!seriesTail) return [] as any[];
+      const numericSeries = buildIndicatorNumericSeries(conditions, seriesTail);
+      return buildActionIntents(conditions, context, indicatorSignals ?? {}, numericSeries);
+    } catch {
+      return [] as any[];
+    }
+  })();
   const indicatorMap = collectIndicatorMap((conditions.root as unknown) as ConditionNode);
   const indicatorLabel = (type: string) => {
     const map: Record<string, string> = { bollinger: '볼린저 밴드', ma: '이동평균선', rsi: 'RSI', dmi: 'DMI/ADX', macd: 'MACD' };
@@ -122,6 +135,28 @@ export function ConditionsTrace({
             </ul>
           )}
         </div>
+      </div>
+      {/* Actions preview */}
+      <div>
+        <p className="mb-1 text-zinc-400">액션(프리뷰)</p>
+        {actionsPreview.length === 0 ? (
+          <p className="text-zinc-500">없음</p>
+        ) : (
+          <ul className="space-y-1">
+            {actionsPreview.map((a) => (
+              <li key={a.id} className="flex items-center justify-between rounded border border-zinc-800 bg-zinc-950/40 px-2 py-1">
+                <span className="truncate text-zinc-300">
+                  {a.kind.toUpperCase()} · {a.orderType || 'n/a'}
+                  {a.price != null ? <span className="text-zinc-500"> · 가격 {fmt(a.price)}</span> : null}
+                  {a.amount?.mode ? (
+                    <span className="text-zinc-500"> · 금액 {a.amount.mode}{a.amount.value != null ? ` ${fmt(a.amount.value)}${a.amount.mode.includes('percent') ? '%' : ''}` : ''}</span>
+                  ) : null}
+                </span>
+                <span className="text-[10px] text-zinc-500">그룹 {a.groupId}</span>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
     </div>
   );

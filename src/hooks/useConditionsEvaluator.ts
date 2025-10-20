@@ -26,7 +26,7 @@ export type UseConditionsEvaluatorState = {
   lastEvaluatedAt: number | null;
   context: EvaluationContext | null;
   error: string | null;
-  extras?: { dmi?: { diPlus: number; diMinus: number; adx: number }; metrics?: { lastMs: number; avgMs: number; count: number } };
+  extras?: { dmi?: { diPlus: number; diMinus: number; adx: number }; metrics?: { lastMs: number; avgMs: number; count: number }; series?: { closes: number[]; highs: number[]; lows: number[] } };
 };
 
 // Engine evaluator hook: subscribes to candles and evaluates conditions via worker (with sync fallback)
@@ -185,7 +185,8 @@ export function useConditionsEvaluator(args: UseConditionsEvaluatorArgs): UseCon
         error: null,
         extras: {
           ...(dmiExtras ? { dmi: dmiExtras } : {}),
-          metrics: { ...metricsRef.current }
+          metrics: { ...metricsRef.current },
+          series: { closes: seriesBufRef.current.closes.slice(), highs: seriesBufRef.current.highs.slice(), lows: seriesBufRef.current.lows.slice() }
         }
       });
     };

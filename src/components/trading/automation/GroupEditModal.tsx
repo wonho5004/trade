@@ -6,9 +6,6 @@ import type { ConditionGroupNode, ConditionNode, IndicatorConditions, StatusLeaf
 import { normalizeConditionTree, createIndicatorEntry, createIndicatorLeaf } from '@/lib/trading/autoTradingDefaults';
 import { replaceGroupChildren, ensureGroup, collectIndicatorNodes } from '@/lib/trading/conditionsTree';
 import { ConditionsEditorModal } from './ConditionsEditorModal';
-import { ConditionsPreview } from './ConditionsPreview';
-import { useSymbolValidation } from '@/hooks/useSymbolValidation';
-import { normalizeSymbol as normalizePreviewSymbol } from '@/lib/trading/symbols';
 
 // Lightweight wrapper: reuse ConditionsEditorModal's editor for a single group
 export function GroupEditModal({
@@ -38,12 +35,13 @@ export function GroupEditModal({
     indicatorSignals?: Record<string, boolean>;
     assumeSignalsOn?: boolean;
     onToggle?: (v: boolean) => void;
+    enabledDefault?: boolean;
   };
 }) {
   const [origin, setOrigin] = useState<IndicatorConditions>(() => conditions);
   // 편집 대상 그룹 전체를 상태로 관리(자식만 분리하지 않음)
   const [editedGroup, setEditedGroup] = useState<ConditionGroupNode | null>(null);
-  const symValid = useSymbolValidation(preview ? (preview.symbolInput || preview.symbol) : '', (preview?.quote ?? 'USDT') as any);
+  // Preview is intentionally disabled inside GroupEditModal
 
   const root = useMemo(() => conditions.root as unknown as ConditionNode, [conditions]);
   const group = useMemo(() => findGroupNode(root, groupId), [root, groupId]);
@@ -99,44 +97,6 @@ export function GroupEditModal({
           </div>
         </header>
         <div className="space-y-4 p-4">
-          {preview ? (
-            <div className="flex items-center justify-between">
-              <ConditionsPreview
-                conditions={{ root: (editedGroup ?? ({ kind: 'group', id: groupId, operator: 'and', children: [] } as any)) } as any}
-                symbol={preview.symbol}
-                interval={preview.interval}
-                direction={preview.direction}
-                indicatorSignals={preview.indicatorSignals}
-              />
-              <div className="flex items-center gap-3 text-[11px] text-zinc-400">
-                <label className="flex items-center gap-2">
-                  <span>심볼</span>
-                  <input
-                    value={preview.symbolInput ?? ''}
-                    onChange={(e) => preview.onSymbolChange?.(e.target.value)}
-                    onBlur={(e) => {
-                      const q = preview.quote ?? 'USDT';
-                      const norm = normalizePreviewSymbol(e.currentTarget.value || preview.symbol, q);
-                      preview.onSymbolChange?.(norm);
-                    }}
-                    placeholder={preview.symbol}
-                    className={`w-44 rounded bg-zinc-900 px-2 py-1 text-zinc-100 ${
-                      symValid?.valid === true ? 'border border-emerald-600' : symValid?.valid === false ? 'border border-rose-600' : 'border border-zinc-700'
-                    }`}
-                  />
-                  {symValid?.loading ? (
-                    <span className="text-[10px] text-zinc-500">검증중…</span>
-                  ) : preview.symbolInput ? (
-                    <span className={`rounded border px-1 text-[10px] ${symValid?.valid ? 'border-emerald-700 text-emerald-300' : 'border-zinc-800 text-zinc-500'}`}>미리보기 {preview.symbol}</span>
-                  ) : null}
-                </label>
-                <label className="flex items-center gap-2">
-                  <input type="checkbox" className="h-4 w-4" checked={!!preview.assumeSignalsOn} onChange={(e) => preview.onToggle?.(e.target.checked)} />
-                  지표 신호 가정(ON)
-                </label>
-              </div>
-          </div>
-          ) : null}
           <div className="flex flex-wrap items-center gap-2 text-[11px] text-zinc-400">
             <span className="text-zinc-300">지표 추가</span>
             <select
@@ -244,18 +204,7 @@ export function GroupEditModal({
             onClose={() => {}}
             initialMode="edit"
             embedded
-            previewCtx={preview ? {
-              symbol: preview.symbol,
-              symbolInput: preview.symbolInput,
-              onSymbolChange: preview.onSymbolChange,
-              quote: preview.quote,
-              onQuoteChange: preview.onQuoteChange,
-              interval: preview.interval,
-              direction: preview.direction,
-              indicatorSignals: preview.indicatorSignals,
-              assumeSignalsOn: preview.assumeSignalsOn,
-              onToggle: preview.onToggle
-            } : undefined}
+            previewCtx={undefined}
           />
           {(() => {
             const collectActions = (node: any, acc: ActionLeafNode[] = []): ActionLeafNode[] => {
@@ -321,6 +270,20 @@ export function GroupEditModal({
                               </select>
                             </label>
                           ) : null}
+                          {/* 실행 옵션 (공통) */}
+                          <label className="flex items-center gap-2">
+                            <span className="w-20 text-zinc-400">포지션</span>
+                            <select value={(a.action as any).positionSide ?? ''} onChange={(e) => replaceAction(a.id, (cur) => ({ ...cur, action: { ...(cur.action as any), positionSide: (e.target.value || null) as any } }))} className="flex-1 rounded border border-zinc-700 bg-zinc-900 px-2 py-1">
+                              <option value="">기본</option>
+                              <option value="BOTH">BOTH</option>
+                              <option value="LONG">LONG</option>
+                              <option value="SHORT">SHORT</option>
+                            </select>
+                          </label>
+                          <label className="flex items-center gap-2">
+                            <input type="checkbox" className="h-4 w-4" checked={Boolean((a.action as any).reduceOnly)} onChange={(e) => replaceAction(a.id, (cur) => ({ ...cur, action: { ...(cur.action as any), reduceOnly: e.target.checked } }))} />
+                            <span>reduceOnly</span>
+                          </label>
                           {a.action.kind === 'buy' || a.action.kind === 'sell' ? (
                             <label className="flex items-center gap-2">
                               <span className="w-20 text-zinc-400">금액</span>
@@ -413,6 +376,13 @@ export function GroupEditModal({
                                   <option value="input">입력값</option>
                                   <option value="indicator">지표값</option>
                                   <option value="condition">조건추가</option>
+                                </select>
+                              </label>
+                              <label className="flex items-center gap-2">
+                                <span className="w-20 text-zinc-400">working</span>
+                                <select value={(a.action as any).workingType ?? 'MARK_PRICE'} onChange={(e) => replaceAction(a.id, (cur) => ({ ...cur, action: { ...(cur.action as any), workingType: e.target.value as any } }))} className="flex-1 rounded border border-zinc-700 bg-zinc-900 px-2 py-1">
+                                  <option value="MARK_PRICE">MARK</option>
+                                  <option value="CONTRACT_PRICE">CONTRACT</option>
                                 </select>
                               </label>
                               {((a.action as StopLossConfig).priceMode === 'input') ? (
@@ -522,6 +492,8 @@ export function GroupEditModal({
                         <option value="min">최소값</option>
                         <option value="max">최대값</option>
                         <option value="avg">평균값</option>
+                        <option value="ratio">비율(A/B)</option>
+                        <option value="offset">오프셋%(A)</option>
                       </select>
                       <select id="expr-a" className="rounded border border-zinc-700 bg-zinc-900 px-2 py-1">
                         {inds.map((n: any) => (
@@ -538,7 +510,20 @@ export function GroupEditModal({
                           const op = (document.getElementById('expr-op') as HTMLSelectElement).value;
                           const a = (document.getElementById('expr-a') as HTMLSelectElement).value;
                           const b = (document.getElementById('expr-b') as HTMLSelectElement).value;
-                          const token = `expr:${op}:${a}:${b}`;
+                          let token = '';
+                          if (op === 'cross') {
+                            const dir = (document.getElementById('expr-cross-dir') as HTMLSelectElement | null)?.value || 'both';
+                            const when = (document.getElementById('expr-cross-when') as HTMLSelectElement | null)?.value || 'recent';
+                            token = `expr:cross:${a}:${b}:dir=${dir}:when=${when}`;
+                          } else if (op === 'offset') {
+                            const pctRaw = (document.getElementById('expr-offset-pct') as HTMLInputElement | null)?.value || '0';
+                            const pct = Math.max(-1000, Math.min(1000, Number(pctRaw) || 0));
+                            token = `expr:offset:${a}:pct=${pct}`;
+                          } else if (op === 'ratio') {
+                            token = `expr:ratio:${a}:${b}`;
+                          } else {
+                            token = `expr:${op}:${a}:${b}`;
+                          }
                           const target = indicatorPickerFor as string;
                           setEditedGroup((prev) => {
                             const base = ensureGroup((prev ?? ({ kind: 'group', id: groupId, operator: 'and', children: [] } as any)) as any);
@@ -555,11 +540,30 @@ export function GroupEditModal({
                           setIndicatorPickerFor(null);
                         }}>파생 값 적용</button>
                     </div>
+                    <div className="mt-2 grid gap-2 md:grid-cols-[1fr_1fr] text-[11px] text-zinc-300">
+                      <div className="flex items-center gap-2">
+                        <span className="w-20 text-zinc-400">교차 설정</span>
+                        <select id="expr-cross-dir" className="rounded border border-zinc-700 bg-zinc-900 px-2 py-1">
+                          <option value="both">전체</option>
+                          <option value="up">상향만</option>
+                          <option value="down">하향만</option>
+                        </select>
+                        <select id="expr-cross-when" className="rounded border border-zinc-700 bg-zinc-900 px-2 py-1">
+                          <option value="recent">최근</option>
+                          <option value="previous">직전</option>
+                        </select>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="w-20 text-zinc-400">오프셋%</span>
+                        <input id="expr-offset-pct" type="number" step={0.01} min={-1000} max={1000} defaultValue={0} className="w-28 rounded border border-zinc-700 bg-zinc-900 px-2 py-1" />
+                        <span className="text-zinc-500">(op=오프셋%일 때 사용)</span>
+                      </div>
+                    </div>
                     <p className="mt-1 text-[10px] text-zinc-500">교차값은 엔진에서 계산되며, 최근 교차값 등 세부 규칙은 실행 단계에서 해석합니다.</p>
                   </div>
                 );
               })()}
-              <div className="mt-3 flex items-center gap-2">
+              <div className="mt-3 flex flex-wrap items-center gap-2">
                 <span className="text-[11px] text-zinc-300">지표 추가</span>
                 <select value={addType} onChange={(e) => setAddType(e.target.value as any)} className="rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-[11px] text-zinc-100">
                   <option value="ma">이동평균선</option>
@@ -568,8 +572,18 @@ export function GroupEditModal({
                   <option value="dmi">DMI / ADX</option>
                   <option value="macd">MACD</option>
                 </select>
+                {addType === 'ma' ? (
+                  <label className="ml-2 flex items-center gap-2 text-[11px] text-zinc-400">
+                    <span>기간</span>
+                    <input id="new-ma-period" type="number" min={1} max={5000} defaultValue={20} className="w-20 rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-zinc-100" />
+                  </label>
+                ) : null}
                 <button className="rounded border border-emerald-700 px-2 py-0.5 text-[11px] text-emerald-300" onClick={() => {
                   const entry = createIndicatorEntry(addType);
+                  if (addType === 'ma') {
+                    const v = Number((document.getElementById('new-ma-period') as HTMLInputElement | null)?.value ?? '20');
+                    (entry as any).config.period = Math.max(1, Math.min(5000, Number.isFinite(v) ? v : 20));
+                  }
                   const leaf = createIndicatorLeaf(entry);
                   const newId = (leaf as any).id as string;
                   setEditedGroup((prev) => {

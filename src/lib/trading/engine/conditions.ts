@@ -10,6 +10,7 @@ import type {
   StatusUnit,
   PositionDirection
 } from '@/types/trading/auto-trading';
+import type { ActionLeafNode, BuyOrderConfig, SellOrderConfig, StopLossConfig } from '@/types/trading/auto-trading';
 import type { Candle } from '@/types/chart';
 
 export type IndicatorSignalMap = Record<string, boolean>;
@@ -159,6 +160,7 @@ export type ExecutablePlan = {
   statuses: Array<{ id: string; metric: StatusMetric; comparator: string; value: number; unit?: StatusUnit }>;
   candles: Array<{ id: string; field: string; comparator: string; value: number; reference: string }>;
   groups: Array<{ id: string; operator: AggregatorOperator }>;
+  actions: Array<{ id: string; groupId: string; action: BuyOrderConfig | SellOrderConfig | StopLossConfig }>;
   root: ConditionGroupNode;
 };
 
@@ -167,11 +169,18 @@ export function toExecutablePlan(conditions: IndicatorConditions): ExecutablePla
   const { indicators, statuses } = collectExecutableLeaves(root);
   const candles: CandleLeafNode[] = [];
   const groups: ConditionGroupNode[] = [];
+  const actions: Array<{ id: string; groupId: string; action: BuyOrderConfig | SellOrderConfig | StopLossConfig }> = [];
+  const groupStack: string[] = [];
   const walk = (n: ConditionNode) => {
     if (n.kind === 'candle') candles.push(n);
-    if (n.kind === 'group') {
+    else if (n.kind === 'action') {
+      const gid = groupStack[groupStack.length - 1] ?? root.id;
+      actions.push({ id: n.id, groupId: gid, action: n.action as any });
+    } else if (n.kind === 'group') {
       groups.push(n);
+      groupStack.push(n.id);
       n.children.forEach(walk);
+      groupStack.pop();
     }
   };
   walk(root);
@@ -180,6 +189,7 @@ export function toExecutablePlan(conditions: IndicatorConditions): ExecutablePla
     statuses: statuses.map((s) => ({ id: s.id, metric: s.metric, comparator: s.comparator, value: s.value, unit: s.unit })),
     candles: candles.map((c) => ({ id: c.id, field: c.candle.field, comparator: c.candle.comparator, value: c.candle.targetValue, reference: c.candle.reference } as any)),
     groups: groups.map((g) => ({ id: g.id, operator: g.operator })),
+    actions,
     root
   };
 }

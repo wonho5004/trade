@@ -68,7 +68,7 @@ export function SectionFrame({ sectionKey, title, description, isDirty = false, 
   };
 
   return (
-    <section className="rounded-xl border border-zinc-800 bg-zinc-950">
+    <section id={`section-${sectionKey}`} className="rounded-xl border border-zinc-800 bg-zinc-950">
       <header className="flex items-start justify-between gap-3 border-b border-zinc-800 px-4 py-3 md:px-5 md:py-4">
         <button
           type="button"
