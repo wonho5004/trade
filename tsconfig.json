@@ -49,11 +49,12 @@
     ]
   },
   "include": [
-    "next-env.d.ts",
-    "src/**/*",
+    ".next/types/**/*.ts",
     "cypress",
+    "next-env.d.ts",
     "next.config.mjs",
-    ".next/types/**/*.ts"
+    "src/**/*",
+    ".next15/types/**/*.ts"
   ],
   "exclude": [
     "node_modules"

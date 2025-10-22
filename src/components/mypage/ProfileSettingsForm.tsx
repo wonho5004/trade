@@ -1,6 +1,7 @@
 'use client';
 
-import { useFormState, useFormStatus } from 'react-dom';
+import { useActionState } from 'react';
+import { useFormStatus } from 'react-dom';
 
 import { myPageDefaultState } from '@/app/mypage/form-state';
 import { updateProfileAction } from '@/app/mypage/actions';
@@ -27,7 +28,7 @@ const ROLE_LABEL: Record<string, string> = {
 };
 
 export function ProfileSettingsForm({ details }: { details: ProfileDetails | null }) {
-  const [state, formAction] = useFormState(updateProfileAction, myPageDefaultState);
+  const [state, formAction] = useActionState(updateProfileAction, myPageDefaultState);
   const profile = details?.profile ?? null;
   const roleLabel = profile ? ROLE_LABEL[profile.role] ?? profile.role.toUpperCase() : ROLE_LABEL.guest;
   const emailDisplay = details?.email ?? '등록된 이메일이 없습니다.';

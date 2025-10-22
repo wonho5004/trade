@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useDebounce } from '@/hooks/useDebounce';
 import { normalizeSymbol } from '@/lib/trading/symbols';
@@ -52,7 +52,7 @@ export function SymbolSelector({
 
   type RecentItem = { s: string; t: number };
 
-  const pruneAndNormalizeStored = (raw: unknown): RecentItem[] => {
+  const pruneAndNormalizeStored = useCallback((raw: unknown): RecentItem[] => {
     const cutoff = Date.now() - recentRetentionDays * 24 * 60 * 60 * 1000;
     let arr: RecentItem[] = [];
     if (Array.isArray(raw)) {
@@ -73,7 +73,7 @@ export function SymbolSelector({
       deduped.push(it);
     }
     return deduped.slice(0, recentMax);
-  };
+  }, [recentRetentionDays, recentMax]);
 
   useEffect(() => {
     try {
@@ -84,7 +84,7 @@ export function SymbolSelector({
       localStorage.setItem(recentKey, JSON.stringify(normalized));
       setRecent(normalized.map((x) => x.s));
     } catch {}
-  }, [recentKey]);
+  }, [recentKey, pruneAndNormalizeStored]);
 
   // Close dropdown on outside click or Escape
   useEffect(() => {

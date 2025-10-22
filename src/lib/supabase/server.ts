@@ -46,8 +46,8 @@ export function createSupabaseServerClient(role: ClientRole = 'anon'): SupabaseC
   });
 }
 
-export function readAuthCookies() {
-  const cookieStore = cookies();
+export async function readAuthCookies() {
+  const cookieStore = await cookies();
   const names = getAuthCookieNames();
   return {
     token: cookieStore.get(names.session)?.value ?? null,
@@ -55,7 +55,7 @@ export function readAuthCookies() {
   };
 }
 
-export function writeAuthCookies({
+export async function writeAuthCookies({
   token,
   role,
   maxAgeSeconds = 60 * 60 * 24
@@ -64,7 +64,7 @@ export function writeAuthCookies({
   role: string;
   maxAgeSeconds?: number;
 }) {
-  const cookieStore = cookies();
+  const cookieStore = await cookies();
   const names = getAuthCookieNames();
   cookieStore.set(names.session, token, {
     httpOnly: true,
@@ -82,8 +82,8 @@ export function writeAuthCookies({
   });
 }
 
-export function clearAuthCookies() {
-  const cookieStore = cookies();
+export async function clearAuthCookies() {
+  const cookieStore = await cookies();
   const names = getAuthCookieNames();
   cookieStore.delete(names.session);
   cookieStore.delete(names.role);

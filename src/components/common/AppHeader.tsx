@@ -22,7 +22,7 @@ const ROLE_LABEL: Record<UserRole, string> = {
 };
 
 export async function AppHeader() {
-  const { token, role: cookieRole } = readAuthCookies();
+  const { token, role: cookieRole } = await readAuthCookies();
   const profileDetails = token ? await getAuthenticatedProfile() : null;
 
   const normalizedRole = (profileDetails?.profile.role ?? cookieRole ?? 'guest') as UserRole;

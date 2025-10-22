@@ -9,13 +9,21 @@ type StrategyRecord = {
   createdAt: string;
 };
 
+function errorJson(status: number, code: string, message: string, details?: Record<string, unknown>) {
+  const requestId = (globalThis as any).crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return NextResponse.json(
+    { success: false, error: { code, message, details }, requestId, ts: new Date().toISOString() },
+    { status }
+  );
+}
+
 export async function GET() {
   try {
-    const { token } = readAuthCookies();
-    if (!token) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+    const { token } = await readAuthCookies();
+    if (!token) return errorJson(401, 'UNAUTHORIZED', '로그인이 필요합니다.');
     const supabase = createSupabaseServerClient('service');
     const { data: userData, error } = await supabase.auth.getUser(token);
-    if (error || !userData?.user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+    if (error || !userData?.user) return errorJson(401, 'UNAUTHORIZED', '인증이 유효하지 않습니다.');
 
     const user = userData.user;
     const profileRes = await supabase.from('profiles').select('role').eq('id', user.id).maybeSingle();
@@ -33,17 +41,17 @@ export async function GET() {
       backups: role === 'sys_admin' ? backups : undefined
     });
   } catch (e) {
-    return NextResponse.json({ error: 'internal_error' }, { status: 500 });
+    return errorJson(500, 'INTERNAL', '서버 오류가 발생했습니다.');
   }
 }
 
 export async function POST(request: Request) {
   try {
-    const { token } = readAuthCookies();
-    if (!token) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+    const { token } = await readAuthCookies();
+    if (!token) return errorJson(401, 'UNAUTHORIZED', '로그인이 필요합니다.');
     const supabase = createSupabaseServerClient('service');
     const { data: userData, error } = await supabase.auth.getUser(token);
-    if (error || !userData?.user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+    if (error || !userData?.user) return errorJson(401, 'UNAUTHORIZED', '인증이 유효하지 않습니다.');
 
     const user = userData.user;
     const profileRes = await supabase.from('profiles').select('role').eq('id', user.id).maybeSingle();
@@ -52,7 +60,7 @@ export async function POST(request: Request) {
 
     const body = (await request.json()) as { name: string; payload: unknown };
     const name = (body?.name ?? '').toString().trim();
-    if (!name) return NextResponse.json({ error: 'invalid_name' }, { status: 400 });
+    if (!name) return errorJson(400, 'VALIDATION_ERROR', '전략 이름은 필수입니다.', { fieldErrors: [{ field: 'logicName', code: 'REQUIRED', message: '전략 이름을 입력하세요.' }] });
 
     const meta = (user.user_metadata ?? {}) as Record<string, unknown>;
     const current = (meta.auto_trading_strategy as StrategyRecord | undefined) ?? null;
@@ -78,30 +86,29 @@ export async function POST(request: Request) {
     const { error: updateError } = await supabase.auth.admin.updateUserById(user.id, {
       user_metadata: nextMeta
     });
-    if (updateError) return NextResponse.json({ error: 'persist_failed' }, { status: 500 });
+    if (updateError) return errorJson(500, 'INTERNAL', '전략 저장에 실패했습니다.');
 
     return NextResponse.json({ ok: true, strategy: newRecord, limit });
   } catch (e) {
-    return NextResponse.json({ error: 'internal_error' }, { status: 500 });
+    return errorJson(500, 'INTERNAL', '서버 오류가 발생했습니다.');
   }
 }
 
 export async function DELETE() {
   try {
-    const { token } = readAuthCookies();
-    if (!token) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+    const { token } = await readAuthCookies();
+    if (!token) return errorJson(401, 'UNAUTHORIZED', '로그인이 필요합니다.');
     const supabase = createSupabaseServerClient('service');
     const { data: userData, error } = await supabase.auth.getUser(token);
-    if (error || !userData?.user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+    if (error || !userData?.user) return errorJson(401, 'UNAUTHORIZED', '인증이 유효하지 않습니다.');
     const user = userData.user;
 
     const { error: updateError } = await supabase.auth.admin.updateUserById(user.id, {
       user_metadata: { auto_trading_strategy: null }
     });
-    if (updateError) return NextResponse.json({ error: 'persist_failed' }, { status: 500 });
+    if (updateError) return errorJson(500, 'INTERNAL', '전략 삭제에 실패했습니다.');
     return NextResponse.json({ ok: true });
   } catch (e) {
-    return NextResponse.json({ error: 'internal_error' }, { status: 500 });
+    return errorJson(500, 'INTERNAL', '서버 오류가 발생했습니다.');
   }
 }
-

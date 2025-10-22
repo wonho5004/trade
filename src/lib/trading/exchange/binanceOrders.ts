@@ -3,7 +3,7 @@ import type { PlannedOrder } from '@/lib/trading/engine/orderPlanner';
 export type BinanceFuturesOrder = {
   symbol: string;
   side: 'BUY' | 'SELL';
-  type: 'MARKET' | 'LIMIT' | 'STOP_MARKET' | 'STOP';
+  type: 'MARKET' | 'LIMIT' | 'STOP_MARKET' | 'STOP_LIMIT';
   quantity?: string; // string per API
   price?: string;
   stopPrice?: string;
@@ -40,7 +40,7 @@ export function toBinanceFuturesOrder(symbol: string, order: PlannedOrder): Bina
       if (order.positionSide === 'LONG') base.side = 'SELL';
       else if (order.positionSide === 'SHORT') base.side = 'BUY';
     }
-  } else if (order.type === 'STOP') {
+  } else if (order.type === 'STOP_LIMIT') {
     if (order.stopPrice == null || order.quantity == null || order.price == null) return null;
     base.stopPrice = String(order.stopPrice);
     base.price = String(order.price);

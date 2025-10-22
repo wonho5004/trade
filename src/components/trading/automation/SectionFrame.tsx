@@ -9,6 +9,7 @@ type SectionFrameProps = {
   sectionKey: string;
   title: string;
   description?: string;
+  errorMessage?: string;
   isDirty?: boolean;
   onSave?: () => Promise<void | (() => void)> | void | (() => void);
   onReset?: () => void;
@@ -19,12 +20,13 @@ type SectionFrameProps = {
   children: ReactNode;
 };
 
-export function SectionFrame({ sectionKey, title, description, isDirty = false, onSave, onReset, forceEnableSave = false, helpTitle, helpContent, children }: SectionFrameProps) {
-  const isCollapsed = useUIPreferencesStore((s) => s.isCollapsed(sectionKey));
+export function SectionFrame({ sectionKey, title, description, errorMessage, isDirty = false, onSave, onReset, forceEnableSave = false, helpTitle, helpContent, children }: SectionFrameProps) {
+  const isCollapsed = useUIPreferencesStore((s) => s.autoTrading.collapsedSections[sectionKey] !== false);
   const toggleCollapsed = useUIPreferencesStore((s) => s.toggleCollapsed);
   const setCollapsed = useUIPreferencesStore((s) => s.setCollapsed);
   const [saving, setSaving] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
+  const [localError, setLocalError] = useState<string | null>(null);
   const { show } = useOptionalToast();
 
   const handleToggle = () => toggleCollapsed(sectionKey);
@@ -33,6 +35,7 @@ export function SectionFrame({ sectionKey, title, description, isDirty = false, 
     if (!onSave) return;
     try {
       setSaving(true);
+      setLocalError(null);
       const maybeUndo = await Promise.resolve(onSave());
       // collapse after successful save
       toggleCollapsed(sectionKey);
@@ -62,13 +65,28 @@ export function SectionFrame({ sectionKey, title, description, isDirty = false, 
     } catch (error) {
       const message = error instanceof Error ? error.message : '알 수 없는 오류가 발생했습니다.';
       show({ title: '저장 실패', description: message, type: 'error' });
+      setLocalError(message);
+      // ensure visible
+      setCollapsed(sectionKey, false);
+      try {
+        const el = document.getElementById(`section-${sectionKey}`);
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        // focus first invalid or interactive element to guide the user
+        setTimeout(() => {
+          const container = document.getElementById(`section-${sectionKey}`);
+          const firstInvalid = container?.querySelector('[aria-invalid="true"]') as HTMLElement | null;
+          const firstInteractive = container?.querySelector('input:not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled])') as HTMLElement | null;
+          (firstInvalid || firstInteractive)?.focus?.();
+        }, 80);
+      } catch {}
     } finally {
       setSaving(false);
     }
   };
 
+  const hasError = Boolean(localError || errorMessage);
   return (
-    <section id={`section-${sectionKey}`} className="rounded-xl border border-zinc-800 bg-zinc-950">
+    <section id={`section-${sectionKey}`} className={`rounded-xl bg-zinc-950 ${hasError ? 'border border-rose-700' : 'border border-zinc-800'}`}>
       <header className="flex items-start justify-between gap-3 border-b border-zinc-800 px-4 py-3 md:px-5 md:py-4">
         <button
           type="button"
@@ -86,6 +104,9 @@ export function SectionFrame({ sectionKey, title, description, isDirty = false, 
             ) : null}
           </div>
           {description ? <p className="mt-0.5 text-xs text-zinc-400">{description}</p> : null}
+          {hasError ? (
+            <p className="mt-1 text-xs font-medium text-rose-300">{localError || errorMessage}</p>
+          ) : null}
         </button>
         <div className="flex items-center gap-2">
           {helpContent ? <HelpButton onClick={() => setShowHelp(true)} /> : null}

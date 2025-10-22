@@ -18,10 +18,11 @@
 - [ ] Next.js 로컬 부팅 확인(`npm run dev`)
 - [ ] 프로덕션 번들 스모크 테스트(`npm run build && npm run start`)
 - [ ] 분석/백테스트 엔트리포인트 실행(`python python/analysis/main.py`)
-- [ ] 테스트 통과 및 워치(`npm run test --watch`)
-- [ ] API 입력 검증 추가 및 에러 포맷 합의
-- [ ] 자동매매설정 페이지 보완 완료
-- [ ] 오류 해결 UI 개선 완료
+- [x] 테스트 통과 및 워치(`npm run test --watch`) — 현재 26 passed / 0 failed
+- [x] API 입력 검증(심볼 서버 검증) 추가 — `/api/markets/validate`
+- [ ] 에러 포맷 표준화(프론트/백 공통 에러 스키마 합의)
+- [x] 자동매매설정 페이지 핵심 플로우 보완(조건 모달, 저장/검증/토스트)
+- [x] 오류 해결 UX 개선(실패 필드 하이라이트, Undo 토스트 액션)
 
 ## 실행/검증 명령
 - `npm install`
@@ -32,6 +33,11 @@
 - `python python/analysis/main.py`
 
 ## 히스토리
+### 2025-10-18
+- 조건 DnD 시각 가이드 고도화(드롭 라인/그룹 하이라이트) — `ConditionsEditorModal.tsx`
+- 저장 실패 필드 하이라이트/포커스, 저장 성공 토스트에 되돌리기 액션 추가 — `SectionFrame.tsx`, `ToastProvider.tsx`
+- 심볼/레버리지 서버 검증 API 추가 및 프론트 연동 — `/api/markets/validate`, `src/lib/trading/markets.ts`
+
 ### 2025-10-20
 - 진행 로그 문서 생성: docs/auto-trading-progress.md
 - 초기 로드맵/체크리스트 추가, 기본 실행 명령 수집
@@ -41,7 +47,7 @@
 - 자동매매 관련 심화 개발(백테스트/실거래 연동)은 "자동매매설정 페이지 보완"과 "오류 해결 UI 개선" 완료 이후로 보류합니다.
 
 ### 2025-10-20 (UI 보완)
-- 자동선택 규칙 개수 제한(포함+제외 합산 ≤3): `src/components/trading/automation/SymbolsPickerPanel.tsx:292`
+- 자동선택 규칙 개수 제한(포함+제외 합산 ≤10): `src/components/trading/automation/SymbolsPickerPanel.tsx`
 - 거래량순 → 거래금액순 전환(자동선택 블록): `src/components/trading/automation/SymbolsPickerPanel.tsx:574`
 - 상장일 제외 규칙 배지 노출 및 해제: `src/components/trading/automation/SymbolsPickerPanel.tsx:386`
 - 선택종목 패널 레버리지(기본/입력값) + 포지션(기본/롱/숏/양방향) 복원: `src/components/trading/automation/SymbolsPickerPanel.tsx:786`

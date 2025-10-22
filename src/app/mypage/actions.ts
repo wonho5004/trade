@@ -18,7 +18,7 @@ function readString(formData: FormData, key: string) {
 }
 
 async function getAuthenticatedContext() {
-  const { token } = readAuthCookies();
+  const { token } = await readAuthCookies();
   if (!token) {
     throw new Error('세션이 만료되었습니다. 다시 로그인해 주세요.');
   }

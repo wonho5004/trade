@@ -1,6 +1,7 @@
 'use client';
 
-import { useFormState, useFormStatus } from 'react-dom';
+import { useActionState } from 'react';
+import { useFormStatus } from 'react-dom';
 
 import { myPageDefaultState } from '@/app/mypage/form-state';
 import { changePasswordAction } from '@/app/mypage/actions';
@@ -19,7 +20,7 @@ function SubmitButton() {
 }
 
 export function PasswordChangeForm() {
-  const [state, formAction] = useFormState(changePasswordAction, myPageDefaultState);
+  const [state, formAction] = useActionState(changePasswordAction, myPageDefaultState);
 
   return (
     <form action={formAction} className="space-y-6">

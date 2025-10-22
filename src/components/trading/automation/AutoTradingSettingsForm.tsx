@@ -15,12 +15,14 @@ import { SymbolSelector } from './SymbolSelector';
 import { SymbolsPickerPanel } from './SymbolsPickerPanel';
 import { LogicSummary } from './LogicSummary';
 import { FooterActions } from './FooterActions';
+import { StrategyManagerPanel } from './StrategyManagerPanel';
 import { normalizeSymbol, uniqueAppend, removeSymbol } from '@/lib/trading/symbols';
 import { isNameTaken, upsertLocalStrategyName, listLocalStrategyNames, removeLocalStrategyName } from '@/lib/trading/strategies/local';
 import { GroupListPanel } from './GroupListPanel';
 import { ConditionsPreview } from './ConditionsPreview';
 import { PreviewLauncher } from './PreviewLauncher';
 import { createIndicatorConditions, normalizeConditionTree } from '@/lib/trading/autoTradingDefaults';
+import { applyAutoSelectionRules } from '@/lib/trading/autoFill';
 import { CapitalSettingsPanel } from './CapitalSettingsPanel';
 import { InfoTip } from '@/components/common/InfoTip';
 import { collectIndicatorNodes } from '@/lib/trading/conditionsTree';
@@ -44,7 +46,20 @@ export function AutoTradingSettingsForm() {
   ) => void);
   const [draft, setDraft] = useState<Draft>(settings);
 
-  useEffect(() => setDraft(settings), [settings]);
+  // 전역 settings 변경 시, 심볼 선택 편집 중인 로컬 드래프트의 핵심 필드(수동/제외/오버라이드)는 보존하고
+  // 나머지 필드만 최신 settings로 동기화합니다. 자동선택 규칙(랭킹/제외) 변경 시 드래프트가 초기화되는 문제를 방지.
+  const lastAppliedSavedAtRef = useRef<string | null>(settings.metadata.lastSavedAt);
+  useEffect(() => {
+    const savedAt = settings.metadata.lastSavedAt;
+    const lastApplied = lastAppliedSavedAtRef.current;
+    if (savedAt && savedAt !== lastApplied) {
+      setDraft(settings);
+      lastAppliedSavedAtRef.current = savedAt;
+      try { localStorage.removeItem(DRAFT_SYMBOLS_KEY); } catch {}
+    }
+    // savedAt가 변하지 않는 일반적인 설정 변경 시에는 심볼 선택 드래프트를 건드리지 않아
+    // 수동 선택/제외 목록이 초기화되지 않도록 한다.
+  }, [settings]);
 
   // Local helpers/states
   const [symbolsQuote, setSymbolsQuote] = useState<'USDT' | 'USDC'>('USDT');
@@ -53,7 +68,9 @@ export function AutoTradingSettingsForm() {
   const [filterStable, setFilterStable] = useState<boolean>(true);
   const [minVolume, setMinVolume] = useState<number>(0);
   const [minQuoteVolume, setMinQuoteVolume] = useState<number>(0);
-  const excludeUnknownListing = useUIPreferencesStore((s) => s.getSymbolsPickerPrefs().filters.hideUnknownListing);
+  const excludeUnknownListing = useUIPreferencesStore(
+    (s) => s.autoTrading?.symbolsPicker?.filters?.hideUnknownListing ?? false
+  );
   const setUIPrefs = useUIPreferencesStore((s) => s.updateSymbolsPickerPrefs);
   const [bulkExcludeText, setBulkExcludeText] = useState<string>('');
   const [recentMax, setRecentMax] = useState<number>(12);
@@ -61,6 +78,97 @@ export function AutoTradingSettingsForm() {
   const excludeImportRef = useRef<HTMLInputElement | null>(null);
   const excludeJsonImportRef = useRef<HTMLInputElement | null>(null);
   const [excludeImportNote, setExcludeImportNote] = useState<string | null>(null);
+  const DRAFT_SYMBOLS_KEY = 'auto-trading-draft-symbols-v1';
+  // Restore unsaved manual/excluded lists across refresh
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(DRAFT_SYMBOLS_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as {
+        manualSymbols?: string[];
+        excludedSymbols?: string[];
+        excludedReasons?: Record<string, string>;
+      };
+      if (!parsed) return;
+      setDraft((d) => ({
+        ...d,
+        symbolSelection: {
+          ...d.symbolSelection,
+          manualSymbols: Array.isArray(parsed.manualSymbols) ? parsed.manualSymbols : d.symbolSelection.manualSymbols,
+          excludedSymbols: Array.isArray(parsed.excludedSymbols) ? parsed.excludedSymbols : d.symbolSelection.excludedSymbols,
+          excludedReasons: parsed.excludedReasons || d.symbolSelection.excludedReasons
+        }
+      }));
+    } catch {}
+  }, []);
+
+  // Auto-select rules: mutate draft only (no global store writes)
+  const setDraftAutoRule = (
+    action: 'include' | 'exclude',
+    key: 'volume' | 'volume-bottom' | 'changeUp' | 'changeDown' | 'tradeValue' | 'tradeValue-bottom',
+    n: number
+  ) => {
+    setDraft((d) => {
+      const next = { ...d } as Draft;
+      const rr = { ...(next.symbolSelection.ranking || {}) } as any;
+      if (action === 'include') {
+        if (key === 'volume') rr.volume = n;
+        else if (key === 'tradeValue') rr.market_cap = n;
+        else if (key === 'changeUp') rr.top_gainers = n;
+        else if (key === 'changeDown') rr.top_losers = n;
+        next.symbolSelection.ranking = rr;
+      } else {
+        if (key === 'changeUp') next.symbolSelection.excludeTopGainers = n as any;
+        else if (key === 'changeDown') next.symbolSelection.excludeTopLosers = n as any;
+        else if (key === 'volume-bottom') (next.symbolSelection as any).excludeBottomVolume = Math.max(1, Math.trunc(n));
+        else if (key === 'tradeValue-bottom') (next.symbolSelection as any).excludeBottomMarketCap = Math.max(1, Math.trunc(n));
+      }
+      return next;
+    });
+  };
+  const clearDraftRule = (
+    kind: 'ranking' | 'exclude',
+    field: 'volume' | 'market_cap' | 'top_gainers' | 'top_losers' | 'bottom_volume' | 'bottom_market_cap'
+  ) => {
+    setDraft((d) => {
+      const next = { ...d } as Draft;
+      if (kind === 'ranking') {
+        next.symbolSelection.ranking = {
+          ...(next.symbolSelection.ranking || {}),
+          [field]: null
+        } as any;
+      } else {
+        if (field === 'top_gainers') (next.symbolSelection as any).excludeTopGainers = null;
+        else if (field === 'top_losers') (next.symbolSelection as any).excludeTopLosers = null;
+        else if (field === 'bottom_volume') (next.symbolSelection as any).excludeBottomVolume = null;
+        else if (field === 'bottom_market_cap') (next.symbolSelection as any).excludeBottomMarketCap = null;
+      }
+      return next;
+    });
+  };
+  const clearAllDraftRules = () => {
+    setDraft((d) => {
+      const next = { ...d } as Draft;
+      next.symbolSelection.ranking = {
+        ...(next.symbolSelection.ranking || {}),
+        volume: null,
+        market_cap: null,
+        top_gainers: null,
+        top_losers: null
+      } as any;
+      (next.symbolSelection as any).excludeTopGainers = null;
+      (next.symbolSelection as any).excludeTopLosers = null;
+      (next.symbolSelection as any).excludeBottomVolume = null;
+      (next.symbolSelection as any).excludeBottomMarketCap = null;
+      return next;
+    });
+  };
+  const clearMaxListingAgeDays = () => {
+    setDraft((d) => ({
+      ...d,
+      symbolSelection: { ...d.symbolSelection, maxListingAgeDays: null }
+    }));
+  };
 
   const defaultExcludedNormalized = useMemo(
     () => DEFAULT_EXCLUDED_SYMBOLS.map((s) => normalizeSymbol(s, symbolsQuote)),
@@ -186,6 +294,17 @@ export function AutoTradingSettingsForm() {
       URL.revokeObjectURL(url);
     } catch {}
   };
+  // Persist unsaved edits for manual/excluded lists in localStorage
+  useEffect(() => {
+    try {
+      const payload = JSON.stringify({
+        manualSymbols: draft.symbolSelection.manualSymbols,
+        excludedSymbols: draft.symbolSelection.excludedSymbols,
+        excludedReasons: draft.symbolSelection.excludedReasons
+      });
+      localStorage.setItem(DRAFT_SYMBOLS_KEY, payload);
+    } catch {}
+  }, [draft.symbolSelection.manualSymbols, draft.symbolSelection.excludedSymbols, draft.symbolSelection.excludedReasons]);
   const importFromFile = async (file: File, apply: (symbols: string[]) => void) => {
     const text = await file.text();
     const parts = text
@@ -275,7 +394,7 @@ export function AutoTradingSettingsForm() {
       Object.fromEntries(
         Object.entries(ov ?? {}).map(([k, v]) => [normalizeSymbol(k, symbolsQuote), v === 'both' || v === 'short' || v === 'long' ? v : 'long'])
       );
-    const cleaned = {
+    let cleaned = {
       manualSymbols: normalizeList(draft.symbolSelection.manualSymbols),
       excludedSymbols: normalizeList(draft.symbolSelection.excludedSymbols),
       excludedReasons: Object.fromEntries(
@@ -288,6 +407,46 @@ export function AutoTradingSettingsForm() {
           ? draft.symbolSelection.maxListingAgeDays
           : null
     } as const;
+
+    // 정책: 수동 선택이 우선. 부족한 수량은 규칙으로 보충
+    try {
+      const need = Math.max(0, draft.symbolCount - cleaned.manualSymbols.length);
+      if (need > 0) {
+        const params = new URLSearchParams({ quote: symbolsQuote, sort: 'tradeValue', limit: '2000' });
+        const res = await fetch(`/api/markets?${params.toString()}`);
+        if (res.ok) {
+          const json = (await res.json()) as { items: any[] };
+          const markets = Array.isArray(json.items) ? json.items : [];
+          const settingsLike: any = {
+            symbolSelection: {
+              ranking: draft.symbolSelection.ranking || {},
+              excludeTopGainers: (draft.symbolSelection as any).excludeTopGainers || null,
+              excludeTopLosers: (draft.symbolSelection as any).excludeTopLosers || null,
+              excludeBottomMarketCap: (draft.symbolSelection as any).excludeBottomMarketCap || null
+            }
+          };
+          const out = applyAutoSelectionRules(settingsLike, markets);
+          const inc = new Set(out.include.map((s) => normalizeSymbol(s, symbolsQuote)));
+          const exc = new Set([
+            ...out.exclude.map((s) => normalizeSymbol(s, symbolsQuote)),
+            ...cleaned.excludedSymbols
+          ]);
+          const curr = new Set(cleaned.manualSymbols);
+          for (const s of curr) exc.delete(s);
+          let available = Array.from(inc).filter((s) => !curr.has(s) && !exc.has(s));
+          // Fallback: if no rules produce candidates, fill by top 거래대금
+          if (available.length === 0) {
+            const order = [...markets].sort((a, b) => (b.quoteVolume || 0) - (a.quoteVolume || 0));
+            available = order.map((it) => normalizeSymbol(`${it.base}/${it.quote}`, symbolsQuote)).filter((s) => !curr.has(s) && !exc.has(s));
+          }
+          const fill = available.slice(0, need);
+          cleaned = {
+            ...cleaned,
+            manualSymbols: Array.from(new Set([...cleaned.manualSymbols, ...fill]))
+          } as typeof cleaned;
+        }
+      }
+    } catch {}
 
     // 최소 개수 검증: 랭킹이 비활성인 경우, 수동 선택 개수가 설정한 종목 수보다 적으면 오류
     const rankingValues = Object.values(draft.symbolSelection.ranking ?? {});
@@ -316,6 +475,31 @@ export function AutoTradingSettingsForm() {
           if (json.warnings && json.warnings.length > 0) parts.push(json.warnings.join('\n'));
           throw new Error(parts.join('\n') || '심볼 검증에 실패했습니다.');
         }
+      } else {
+        const json = await res.json().catch(() => ({} as any));
+        const msg = (json?.error?.message as string)
+          || (json?.error as string)
+          || '심볼 검증에 실패했습니다.';
+        const fe = (json?.error?.fieldErrors as Array<{ field: string; message?: string }>) ?? [];
+        const errs: { manualSymbols?: string; excludedSymbols?: string; leverageOverrides?: string } = {};
+        for (const e of fe) {
+          const f = (e as any).field;
+          const m = (e as any).message as string | undefined;
+          if (f === 'manualSymbols') errs.manualSymbols = m || '선택 종목 목록을 확인하세요.';
+          if (f === 'excludedSymbols') errs.excludedSymbols = m || '제외 종목 목록을 확인하세요.';
+          if (f === 'leverageOverrides') errs.leverageOverrides = m || '레버리지 오버라이드를 확인하세요.';
+        }
+        setSymbolsErrors(errs);
+        const anchor = errs.manualSymbols ? 'manual-list' : errs.excludedSymbols ? 'excluded-list' : undefined;
+        if (anchor) {
+          const target = document.getElementById(anchor);
+          target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          setTimeout(() => target?.focus?.(), 60);
+        }
+        const details = fe.map((e: any) => e?.message).filter(Boolean).join('\n');
+        const rid = (json?.requestId as string | undefined) ?? '';
+        const composed = [msg, details, rid ? `요청ID: ${rid}` : ''].filter(Boolean).join('\n');
+        throw new Error(composed);
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : '심볼 검증 실패';
@@ -330,10 +514,17 @@ export function AutoTradingSettingsForm() {
         excludedReasons: cleaned.excludedReasons,
         leverageOverrides: cleaned.leverageOverrides,
         positionOverrides: cleaned.positionOverrides,
-        maxListingAgeDays: cleaned.maxListingAgeDays
+        maxListingAgeDays: cleaned.maxListingAgeDays,
+        // persist auto-select rules to global settings as well
+        ranking: { ...(draft.symbolSelection.ranking as any) } as any,
+        excludeTopGainers: (draft.symbolSelection as any).excludeTopGainers ?? null,
+        excludeTopLosers: (draft.symbolSelection as any).excludeTopLosers ?? null,
+        excludeBottomVolume: (draft.symbolSelection as any).excludeBottomVolume ?? null,
+        excludeBottomMarketCap: (draft.symbolSelection as any).excludeBottomMarketCap ?? null
       };
       d.metadata.lastSavedAt = new Date().toISOString();
     });
+    try { localStorage.removeItem(DRAFT_SYMBOLS_KEY); } catch {}
     return () => {
       setDraft((dr) => ({ ...dr, symbolSelection: prev }));
       updateSettings((d) => {
@@ -347,6 +538,7 @@ export function AutoTradingSettingsForm() {
   const leverageRef = useRef<HTMLInputElement | null>(null);
   const [nameStatus, setNameStatus] = useState<{ checked: boolean; available: boolean } | null>(null);
   const [errors, setErrors] = useState({ basic: { logicName: false, leverage: false } });
+  const [symbolsErrors, setSymbolsErrors] = useState<{ manualSymbols?: string; excludedSymbols?: string; leverageOverrides?: string }>({});
   const [savedNames, setSavedNames] = useState<string[]>(() => listLocalStrategyNames());
   const handleSaveBasic = async () => {
     setErrors({ basic: { logicName: false, leverage: false } });
@@ -582,7 +774,7 @@ export function AutoTradingSettingsForm() {
           helpTitle="종목 선택 도움말"
           helpContent={helpContent.symbols}
           onSave={handleSaveSymbols}
-          onReset={() =>
+          onReset={() => {
             updateSettings((d) => {
               d.symbolSelection = {
                 ...d.symbolSelection,
@@ -597,8 +789,9 @@ export function AutoTradingSettingsForm() {
                 featureOverrides: {}
               } as any;
               d.metadata.lastSavedAt = new Date().toISOString();
-            })
-          }
+            });
+            try { localStorage.removeItem(DRAFT_SYMBOLS_KEY); } catch {}
+          }}
         >
           <div className="space-y-4">
             {/* Controls removed: 최근N/보관/최소 거래량/최소 거래대금/상장일 제외는 아래 패널로 이동 */}
@@ -615,6 +808,19 @@ export function AutoTradingSettingsForm() {
               leverageOverrides={draft.symbolSelection.leverageOverrides}
               positionOverrides={draft.symbolSelection.positionOverrides}
               featureOverrides={(draft.symbolSelection as any).featureOverrides ?? {}}
+              errors={symbolsErrors}
+              rules={{
+                ranking: (draft.symbolSelection.ranking as any) || {},
+                excludeTopGainers: (draft.symbolSelection as any).excludeTopGainers ?? null,
+                excludeTopLosers: (draft.symbolSelection as any).excludeTopLosers ?? null,
+                maxListingAgeDays: draft.symbolSelection.maxListingAgeDays ?? null,
+                excludeBottomVolume: (draft.symbolSelection as any).excludeBottomVolume ?? null,
+                excludeBottomMarketCap: (draft.symbolSelection as any).excludeBottomMarketCap ?? null
+              }}
+              onSetRule={setDraftAutoRule}
+              onClearRule={clearDraftRule}
+              onClearAllRules={clearAllDraftRules}
+              onClearMaxListingAgeDays={clearMaxListingAgeDays}
               onChange={(next) =>
                 setDraft((d) => ({
                   ...d,
@@ -1617,8 +1823,7 @@ export function AutoTradingSettingsForm() {
                     }
                     onRemove={() => {}}
                   />
-                  {draft.symbolSelection.positionOverrides &&
-                  Object.keys(draft.symbolSelection.positionOverrides).length > 0 ? (
+                  {Object.keys(draft.symbolSelection.positionOverrides ?? {}).length > 0 ? (
                     <button
                       type="button"
                       onClick={() =>
@@ -1634,11 +1839,10 @@ export function AutoTradingSettingsForm() {
                   ) : null}
                 </div>
                 <div className="space-y-2">
-                  {!draft.symbolSelection.positionOverrides ||
-                  Object.entries(draft.symbolSelection.positionOverrides).length === 0 ? (
+                  {Object.entries(draft.symbolSelection.positionOverrides ?? {}).length === 0 ? (
                     <p className="text-[11px] text-zinc-500">오버라이드가 없습니다.</p>
                   ) : (
-                    Object.entries(draft.symbolSelection.positionOverrides)
+                    Object.entries(draft.symbolSelection.positionOverrides ?? {})
                       .sort(([a], [b]) => a.localeCompare(b))
                       .map(([symbol, pref]) => (
                         <div
@@ -1852,27 +2056,102 @@ export function AutoTradingSettingsForm() {
 
       {/* Capital (투자 자금) section */}
       <div className="order-2">
-        <SectionFrame
-          sectionKey="capital"
-          title="투자 자금 설정"
-          description="쿼트/투자금/최초·추가 매수 금액과 한도를 설정합니다."
-          isDirty={useSectionDirtyFlag(settings.capital, draft.capital)}
-          helpTitle="투자 자금 설정"
-          helpContent={helpContent.capital}
-          onSave={async () => {
-            const prev = settings.capital;
-            updateSettings((d) => { d.capital = draft.capital; d.metadata.lastSavedAt = new Date().toISOString(); });
-            return () => { setDraft((dr) => ({ ...dr, capital: prev })); updateSettings((d) => { d.capital = prev; d.metadata.lastSavedAt = new Date().toISOString(); }); };
-          }}
-        >
-          <div className="space-y-3">
-            <CapitalSettingsPanel
-              capital={draft.capital as any}
-              symbolCount={draft.symbolCount}
-              onChange={(next) => setDraft((d) => ({ ...d, capital: next as any }))}
-            />
-          </div>
-        </SectionFrame>
+      <SectionFrame
+        sectionKey="capital"
+        title="투자 자금 설정"
+        description="쿼트/투자금/최초·추가 매수 금액과 한도를 설정합니다."
+        isDirty={useSectionDirtyFlag(settings.capital, draft.capital)}
+        helpTitle="투자 자금 설정"
+        helpContent={helpContent.capital}
+        onSave={async () => {
+          // Validate budget vs max limit before saving
+          const prev = settings.capital;
+          const cap = draft.capital as any;
+          const count = Math.max(1, draft.symbolCount || 1);
+          const base = Number(cap.estimatedBalance) || 0;
+          const maxPct = Math.max(0, Math.min(100, cap.maxMargin?.percentage ?? 0));
+          const basis = String(cap.maxMargin?.basis ?? 'wallet');
+          const balances = { wallet: base, total: base, free: base } as any;
+          // compute base by basis using last fetched balances when available would be better; here we use estimatedBalance as base.
+          const basisAmount = (b: string, perSymbol: boolean) => {
+            const bb = b === 'wallet' ? (balances.wallet ?? base) : b === 'total' ? (balances.total ?? base) : (balances.free ?? base);
+            return perSymbol ? bb / count : bb;
+          };
+          const maxBudget = (basisAmount(basis, false) * maxPct) / 100;
+          // initial total
+          const im = cap.initialMargin;
+          let initialTotal = 0;
+          if (im?.mode === 'usdt_amount') initialTotal = Number(im.usdtAmount) || 0;
+          else if (im?.mode === 'min_notional') initialTotal = Number(im.minNotional || 0) * count;
+          else if (im?.mode === 'per_symbol_percentage') initialTotal = basisAmount(im.basis ?? basis, true) * ((Number(im.percentage) || 0) / 100) * count;
+          else if (im?.mode === 'all_symbols_percentage') initialTotal = basisAmount(im.basis ?? basis, false) * ((Number(im.percentage) || 0) / 100);
+          // scale total
+          const sb = cap.scaleInBudget;
+          let scaleTotal = 0;
+          if (sb?.mode === 'usdt_amount') scaleTotal = Number(sb.usdtAmount) || 0;
+          else if (sb?.mode === 'min_notional') scaleTotal = Number(sb.minNotional || 0) * count;
+          else if (sb?.mode === 'per_symbol_percentage') scaleTotal = basisAmount(sb.basis ?? basis, true) * ((Number(sb.percentage) || 0) / 100) * count;
+          else if (sb?.mode === 'balance_percentage') scaleTotal = basisAmount(sb.basis ?? basis, false) * ((Number(sb.percentage) || 0) / 100);
+          const used = Math.max(0, initialTotal) + Math.max(0, scaleTotal);
+          if (used > maxBudget + 1e-8) {
+            // Auto-rescale if enabled
+            if ((cap as any).autoRescale) {
+              let newInitialTotal = initialTotal;
+              let newScaleTotal = scaleTotal;
+              const keepRatio = Boolean((cap as any).preserveRatio);
+              if (keepRatio && used > 0) {
+                const k = maxBudget / used;
+                newInitialTotal = newInitialTotal * k;
+                newScaleTotal = newScaleTotal * k;
+              } else {
+                const delta = used - maxBudget;
+                const reduceScale = Math.min(newScaleTotal, delta);
+                newScaleTotal -= reduceScale;
+                const remaining = delta - reduceScale;
+                if (remaining > 0) newInitialTotal = Math.max(0, newInitialTotal - remaining);
+              }
+
+              const clampPct = (v: number) => Math.max(0, Math.min(100, Number.isFinite(v) ? v : 0));
+              const round2 = (v: number) => Math.round(v * 100) / 100;
+              const basisFor = (b?: string) => String(b ?? basis);
+              const perBase = (b?: string) => basisAmount(basisFor(b), true);
+              const totBase = (b?: string) => basisAmount(basisFor(b), false);
+
+              const im = { ...cap.initialMargin } as any;
+              if (im.mode === 'usdt_amount') im.usdtAmount = round2(newInitialTotal);
+              else if (im.mode === 'min_notional') im.minNotional = round2(newInitialTotal / count);
+              else if (im.mode === 'per_symbol_percentage') im.percentage = clampPct((newInitialTotal / count / Math.max(1e-9, perBase(im.basis))) * 100);
+              else if (im.mode === 'all_symbols_percentage') im.percentage = clampPct((newInitialTotal / Math.max(1e-9, totBase(im.basis))) * 100);
+
+              const sb = { ...cap.scaleInBudget } as any;
+              if (sb.mode === 'usdt_amount') sb.usdtAmount = round2(newScaleTotal);
+              else if (sb.mode === 'min_notional') sb.minNotional = round2(newScaleTotal / count);
+              else if (sb.mode === 'per_symbol_percentage') sb.percentage = clampPct((newScaleTotal / count / Math.max(1e-9, perBase(sb.basis))) * 100);
+              else if (sb.mode === 'balance_percentage') sb.percentage = clampPct((newScaleTotal / Math.max(1e-9, totBase(sb.basis))) * 100);
+
+              const adjusted = { ...(cap as any), initialMargin: im, scaleInBudget: sb } as any;
+              updateSettings((d) => { d.capital = adjusted; d.metadata.lastSavedAt = new Date().toISOString(); });
+              return () => { setDraft((dr) => ({ ...dr, capital: prev })); updateSettings((d) => { d.capital = prev; d.metadata.lastSavedAt = new Date().toISOString(); }); };
+            } else {
+              const fmt = (n: number) => (n >= 1000 ? n.toLocaleString(undefined, { maximumFractionDigits: 2 }) : n.toFixed(2));
+              const diff = used - maxBudget;
+              throw new Error(`투자 한도 초과: 사용 ${fmt(used)} / 한도 ${fmt(maxBudget)} (초과 ${fmt(diff)})\n초기·추매 금액을 줄이거나 한도를 높여주세요.`);
+            }
+          }
+          updateSettings((d) => { d.capital = draft.capital; d.metadata.lastSavedAt = new Date().toISOString(); });
+          return () => { setDraft((dr) => ({ ...dr, capital: prev })); updateSettings((d) => { d.capital = prev; d.metadata.lastSavedAt = new Date().toISOString(); }); };
+        }}
+      >
+        <div className="space-y-3">
+          <CapitalSettingsPanel
+            capital={draft.capital as any}
+            symbolCount={draft.symbolCount}
+            manualSymbols={draft.symbolSelection.manualSymbols}
+            leverage={settings.leverage}
+            onChange={(next) => setDraft((d) => ({ ...d, capital: next as any }))}
+          />
+        </div>
+      </SectionFrame>
       </div>
 
       {/* Entry (매수) section */}
@@ -2217,16 +2496,19 @@ export function AutoTradingSettingsForm() {
             />
           </div>
         </SectionFrame>
-      </div>
+  </div>
 
-      {/* Footer */}
-      <div className="order-10">
-        <LogicSummary settings={draft} />
-      </div>
-      <div className="order-11">
-        <FooterActions />
-      </div>
-    </div>
+  {/* Footer */}
+  <div className="order-10">
+    <LogicSummary settings={draft} />
+  </div>
+  <div className="order-11">
+    <FooterActions />
+  </div>
+  <div className="order-12">
+    <StrategyManagerPanel />
+  </div>
+</div>
   );
 }
 

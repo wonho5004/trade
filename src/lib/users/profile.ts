@@ -97,7 +97,7 @@ function buildFallbackDetails(user: { id: string; email: string | null | undefin
 }
 
 export async function getAuthenticatedProfile(): Promise<ProfileDetails | null> {
-  const { token } = readAuthCookies();
+  const { token } = await readAuthCookies();
   if (!token) {
     return null;
   }

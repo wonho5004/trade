@@ -1,13 +1,11 @@
 # Repository Guidelines
 
-This guide applies repo‑wide. Nested AGENTS.md files may override within their subtree.
-
 ## Project Structure & Module Organization
 - Next.js routes live in `src/app/<feature>`; APIs in `src/app/api`.
-- Shared UI: `src/components/{chart,trading,ui,common}`. Domain logic: `src/lib/{trading,analysis,chart}`.
+- Shared UI in `src/components/{chart,trading,ui,common}`; domain logic in `src/lib/{trading,analysis,chart}`.
 - State in `src/stores`; cross‑cutting types in `src/types`; fixtures/helpers in `src/test-utils`.
 - Python mirrors TS layout: `python/analysis`, `python/backtesting`, `python/indicators`.
-- Public assets in `public/`; co‑locate tests beside features.
+- Public assets in `public/`. Co‑locate tests beside features.
 
 ## Build, Test, and Development Commands
 - `npm install` — install dashboard dependencies.
@@ -19,8 +17,8 @@ This guide applies repo‑wide. Nested AGENTS.md files may override within their
 
 ## Coding Style & Naming Conventions
 - TypeScript is strict; prefer immutable patterns and explicit return types.
-- Format: 2‑space indent, single quotes, trailing commas; follow repo ESLint/Prettier.
-- Naming: Components PascalCase; hooks start with `use`; Zustand stores end with `Store`.
+- Formatting: 2‑space indent, single quotes, trailing commas; follow repo ESLint/Prettier.
+- Naming: Components in PascalCase; hooks start with `use`; Zustand stores end with `Store`.
 - Extract recurring Tailwind clusters into helpers; keep shadcn/ui variants with components.
 
 ## Testing Guidelines
@@ -30,7 +28,7 @@ This guide applies repo‑wide. Nested AGENTS.md files may override within their
 
 ## Commit & Pull Request Guidelines
 - Use Conventional Commits (e.g., `feat: add order book panel`, `fix: correct supabase config`).
-- PRs must include: description of change, executed commands (lint, tests, build), relevant UI evidence, and linked issues (e.g., "Closes #123").
+- PRs must include: change description, executed commands (lint, tests, build), relevant UI evidence, and linked issues (e.g., "Closes #123").
 - Validate incoming data in API routes and ensure a clean worktree before requesting review.
 
 ## Security & Configuration Tips

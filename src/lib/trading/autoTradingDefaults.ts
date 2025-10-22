@@ -381,7 +381,9 @@ export const createSymbolSelection = (): SymbolSelection => ({
   rankingSort: 'alphabet',
   autoFillRecheck: false,
   excludeTopGainers: null,
-  excludeTopLosers: null
+  excludeTopLosers: null,
+  excludeBottomVolume: null,
+  excludeBottomMarketCap: null
 });
 
 export const createHedgeActivationSettings = (): HedgeActivationSettings => ({

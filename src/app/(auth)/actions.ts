@@ -1,6 +1,7 @@
 'use server';
 
 import { redirect } from 'next/navigation';
+import type { Route } from 'next';
 
 import { createSupabaseServerClient, writeAuthCookies, clearAuthCookies } from '@/lib/supabase/server';
 import type { UserRole } from '@/lib/auth/roles';
@@ -74,7 +75,7 @@ export async function loginAction(prevState: AuthActionState, formData: FormData
 
   const role = ((profile?.role as string | null) ?? DEFAULT_ROLE) as UserRole;
   await ensureProfileRecord(user.id, user.user_metadata?.display_name ?? null);
-  writeAuthCookies({ token: session.access_token, role });
+  await writeAuthCookies({ token: session.access_token, role });
 
   void recordUserActivity({
     userId: user.id,
@@ -85,7 +86,7 @@ export async function loginAction(prevState: AuthActionState, formData: FormData
     metadata: { redirectTo }
   });
 
-  redirect(redirectTo);
+  redirect(redirectTo as Route);
 }
 
 export async function registerAction(prevState: AuthActionState, formData: FormData): Promise<AuthActionState> {
@@ -135,7 +136,7 @@ export async function registerAction(prevState: AuthActionState, formData: FormD
   await ensureProfileRecord(user.id, displayName);
 
   if (data.session?.access_token) {
-    writeAuthCookies({ token: data.session.access_token, role: DEFAULT_ROLE });
+    await writeAuthCookies({ token: data.session.access_token, role: DEFAULT_ROLE });
     void recordUserActivity({
       userId: user.id,
       action: 'register_and_login',
@@ -143,7 +144,7 @@ export async function registerAction(prevState: AuthActionState, formData: FormD
       actorId: user.id,
       actorEmail: user.email ?? email
     });
-    redirect('/dashboard');
+    redirect('/dashboard' as Route);
   }
 
   void recordUserActivity({
@@ -161,6 +162,6 @@ export async function registerAction(prevState: AuthActionState, formData: FormD
 }
 
 export async function logoutAction() {
-  clearAuthCookies();
-  redirect('/login');
+  await clearAuthCookies();
+  redirect('/login' as Route);
 }

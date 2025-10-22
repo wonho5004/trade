@@ -548,6 +548,24 @@ const normalizeSymbolSelection = (legacy: unknown): SymbolSelection => {
     });
   }
   merged.featureOverrides = featOv;
+  // Back-compat: negative ranking values indicate bottom-exclude in older versions
+  try {
+    const r = (merged.ranking || ({} as any)) as any;
+    if (typeof r.volume === 'number' && r.volume < 0) {
+      const n = Math.abs(r.volume);
+      (merged as any).excludeBottomVolume = typeof (merged as any).excludeBottomVolume === 'number' && (merged as any).excludeBottomVolume! > 0
+        ? (merged as any).excludeBottomVolume
+        : n;
+      merged.ranking.volume = null;
+    }
+    if (typeof r.market_cap === 'number' && r.market_cap < 0) {
+      const n = Math.abs(r.market_cap);
+      (merged as any).excludeBottomMarketCap = typeof (merged as any).excludeBottomMarketCap === 'number' && (merged as any).excludeBottomMarketCap! > 0
+        ? (merged as any).excludeBottomMarketCap
+        : n;
+      merged.ranking.market_cap = null;
+    }
+  } catch {}
   return merged;
 };
 

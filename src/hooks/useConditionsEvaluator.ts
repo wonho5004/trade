@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import type { IndicatorConditions, PositionDirection } from '@/types/trading/auto-trading';
 import type { IntervalOption, Candle } from '@/types/chart';
@@ -45,6 +45,110 @@ export function useConditionsEvaluator(args: UseConditionsEvaluatorArgs): UseCon
   const metricsRef = useRef<{ lastMs: number; avgMs: number; count: number }>({ lastMs: 0, avgMs: 0, count: 0 });
 
   const baseContext = useMemo<EvaluationContext>(() => ({ symbol, direction }), [symbol, direction]);
+
+  const evaluateNow = useCallback(() => {
+    if (!enabled || !conditions) return;
+    const ctx: EvaluationContext = {
+      ...baseContext,
+      candleCurrent: lastTwoRef.current.cur ?? undefined,
+      candlePrevious: lastTwoRef.current.prev ?? undefined,
+      ...(overrides ?? {})
+    };
+    const myTicket = ++pendingEvalRef.current;
+    const t0 = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    const finish = (value: boolean) => {
+      if (pendingEvalRef.current !== myTicket) return;
+      inflightRef.current = false;
+      const t1 = typeof performance !== 'undefined' ? performance.now() : Date.now();
+      const dt = Math.max(0, t1 - t0);
+      metricsRef.current.lastMs = dt;
+      const n = metricsRef.current.count;
+      metricsRef.current.avgMs = n === 0 ? dt : (metricsRef.current.avgMs * n + dt) / (n + 1);
+      metricsRef.current.count = n + 1;
+      let dmiExtras: { diPlus: number; diMinus: number; adx: number } | undefined = undefined;
+      try {
+        const root = (conditions as any)?.root || conditions;
+        const dmiNode = collectIndicatorNodes(root).find((n) => (n as any).indicator?.type === 'dmi');
+        if (dmiNode) {
+          const cfg = (dmiNode as any).indicator?.config || {};
+          const diP = Math.max(2, Number(cfg?.diPeriod) || 14);
+          const adxP = Math.max(2, Number(cfg?.adxPeriod) || 14);
+          const lookback = Math.max(50, diP + adxP + 5);
+          const snap = computeDmiSnapshot(seriesRef.current.slice(-lookback), diP, adxP);
+          if (snap) dmiExtras = snap;
+        }
+      } catch {}
+      setState({
+        ready: true,
+        match: value,
+        lastEvaluatedAt: Date.now(),
+        context: ctx,
+        error: null,
+        extras: {
+          ...(dmiExtras ? { dmi: dmiExtras } : {}),
+          metrics: { ...metricsRef.current },
+          series: { closes: seriesBufRef.current.closes.slice(), highs: seriesBufRef.current.highs.slice(), lows: seriesBufRef.current.lows.slice() }
+        }
+      });
+    };
+    try {
+      const w = workerRef.current;
+      if (w && inflightRef.current) {
+        try { w.cancel(); } catch {}
+      }
+      let computedSignals = indicatorSignals;
+      const last = seriesRef.current[seriesRef.current.length - 1];
+      const lastTs = last?.timestamp ?? null;
+      if (!computedSignals) {
+        const cache = signalsCacheRef.current;
+        const needRebuild = !cache || cache.condRef !== conditions || cache.len !== seriesRef.current.length || cache.lastTs !== lastTs;
+        const lookback = requiredLookback(conditions);
+        const buf = seriesBufRef.current;
+        if (buf.cap !== lookback) {
+          const tail = seriesRef.current.slice(-lookback);
+          seriesBufRef.current = { closes: tail.map((c) => c.close), highs: tail.map((c) => c.high), lows: tail.map((c) => c.low), cap: lookback };
+        }
+        if (needRebuild) {
+          const series = seriesBufRef.current;
+          computedSignals = conditions ? buildIndicatorSignalsFromSeries(conditions, series) : undefined;
+          signalsCacheRef.current = { condRef: conditions, len: seriesRef.current.length, lastTs, signals: computedSignals };
+        } else {
+          computedSignals = cache?.signals;
+        }
+      }
+      inflightRef.current = true;
+      if (w) {
+        w.evaluate({ conditions, context: ctx, indicatorSignals: computedSignals })
+          .then(finish)
+          .catch((e) => {
+            inflightRef.current = false;
+            setState((s) => ({ ...s, error: e instanceof Error ? e.message : String(e) }));
+          });
+      } else {
+        const v = evaluateConditions(conditions, ctx, { indicatorSignals: computedSignals });
+        finish(v);
+      }
+    } catch (e) {
+      setState((s) => ({ ...s, error: e instanceof Error ? e.message : String(e) }));
+    }
+  }, [enabled, conditions, baseContext, overrides, indicatorSignals]);
+
+  const triggerEvaluate = useCallback(() => {
+    if (throttleTimerRef.current != null) {
+      throttlePendingRef.current = true;
+      return;
+    }
+    throttleTimerRef.current = window.setTimeout(() => {
+      throttleTimerRef.current && window.clearTimeout(throttleTimerRef.current);
+      throttleTimerRef.current = null;
+      const pending = throttlePendingRef.current;
+      throttlePendingRef.current = false;
+      evaluateNow();
+      if (pending) {
+        triggerEvaluate();
+      }
+    }, 150);
+  }, [evaluateNow]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -133,131 +237,15 @@ export function useConditionsEvaluator(args: UseConditionsEvaluatorArgs): UseCon
       try { unsubscribe?.(); } catch {}
       cancelled = true;
     };
-  }, [enabled, symbol, interval]);
+  }, [enabled, symbol, interval, triggerEvaluate]);
 
   // re-evaluate when inputs change
   useEffect(() => {
     if (!enabled) return;
     triggerEvaluate();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, conditions, direction, indicatorSignals, overrides]);
+  }, [enabled, conditions, direction, indicatorSignals, overrides, triggerEvaluate]);
 
-  const evaluateNow = () => {
-    if (!enabled || !conditions) return;
-    const ctx: EvaluationContext = {
-      ...baseContext,
-      candleCurrent: lastTwoRef.current.cur ?? undefined,
-      candlePrevious: lastTwoRef.current.prev ?? undefined,
-      ...(overrides ?? {})
-    };
-    const myTicket = ++pendingEvalRef.current;
-    const t0 = typeof performance !== 'undefined' ? performance.now() : Date.now();
-    const finish = (value: boolean) => {
-      // only accept latest evaluation
-      if (pendingEvalRef.current !== myTicket) return;
-      inflightRef.current = false;
-      const t1 = typeof performance !== 'undefined' ? performance.now() : Date.now();
-      const dt = Math.max(0, t1 - t0);
-      // metrics
-      metricsRef.current.lastMs = dt;
-      const n = metricsRef.current.count;
-      metricsRef.current.avgMs = n === 0 ? dt : (metricsRef.current.avgMs * n + dt) / (n + 1);
-      metricsRef.current.count = n + 1;
-      // extras: DMI snapshot if present in tree
-      let dmiExtras: { diPlus: number; diMinus: number; adx: number } | undefined = undefined;
-      try {
-        const root = (conditions as any)?.root || conditions;
-        const dmiNode = collectIndicatorNodes(root).find((n) => (n as any).indicator?.type === 'dmi');
-        if (dmiNode) {
-          const cfg = (dmiNode as any).indicator?.config || {};
-          const diP = Math.max(2, Number(cfg?.diPeriod) || 14);
-          const adxP = Math.max(2, Number(cfg?.adxPeriod) || 14);
-          const lookback = Math.max(50, diP + adxP + 5);
-          const snap = computeDmiSnapshot(seriesRef.current.slice(-lookback), diP, adxP);
-          if (snap) dmiExtras = snap;
-        }
-      } catch {}
-      setState({
-        ready: true,
-        match: value,
-        lastEvaluatedAt: Date.now(),
-        context: ctx,
-        error: null,
-        extras: {
-          ...(dmiExtras ? { dmi: dmiExtras } : {}),
-          metrics: { ...metricsRef.current },
-          series: { closes: seriesBufRef.current.closes.slice(), highs: seriesBufRef.current.highs.slice(), lows: seriesBufRef.current.lows.slice() }
-        }
-      });
-    };
-    try {
-      const w = workerRef.current;
-      // Cancel previous in-flight evaluation to reduce wasted work
-      if (w && inflightRef.current) {
-        try { w.cancel(); } catch {}
-      }
-      let computedSignals = indicatorSignals;
-      const last = seriesRef.current[seriesRef.current.length - 1];
-      const lastTs = last?.timestamp ?? null;
-      if (!computedSignals) {
-        const cache = signalsCacheRef.current;
-        const needRebuild = !cache || cache.condRef !== conditions || cache.len !== seriesRef.current.length || cache.lastTs !== lastTs;
-        const lookback = requiredLookback(conditions);
-        // ensure tail buffer prepared for current lookback
-        const buf = seriesBufRef.current;
-        if (buf.cap !== lookback) {
-          const tail = seriesRef.current.slice(-lookback);
-          seriesBufRef.current = {
-            closes: tail.map((c) => c.close),
-            highs: tail.map((c) => c.high),
-            lows: tail.map((c) => c.low),
-            cap: lookback
-          };
-        }
-        if (needRebuild) {
-          // use series buffer to avoid 재생성 비용
-          const series = seriesBufRef.current;
-          computedSignals = conditions ? buildIndicatorSignalsFromSeries(conditions, series) : undefined;
-          signalsCacheRef.current = { condRef: conditions, len: seriesRef.current.length, lastTs, signals: computedSignals };
-        } else {
-          computedSignals = cache?.signals;
-        }
-      }
-      inflightRef.current = true;
-      if (w) {
-        w.evaluate({ conditions, context: ctx, indicatorSignals: computedSignals })
-          .then(finish)
-          .catch((e) => {
-            inflightRef.current = false;
-            setState((s) => ({ ...s, error: e instanceof Error ? e.message : String(e) }));
-          });
-      } else {
-        // sync fallback
-        const v = evaluateConditions(conditions, ctx, { indicatorSignals: computedSignals });
-        finish(v);
-      }
-    } catch (e) {
-      setState((s) => ({ ...s, error: e instanceof Error ? e.message : String(e) }));
-    }
-  };
-
-  const triggerEvaluate = () => {
-    // simple throttle to reduce churn under rapid kline updates
-    if (throttleTimerRef.current != null) {
-      throttlePendingRef.current = true;
-      return;
-    }
-    throttleTimerRef.current = window.setTimeout(() => {
-      throttleTimerRef.current && window.clearTimeout(throttleTimerRef.current);
-      throttleTimerRef.current = null;
-      const pending = throttlePendingRef.current;
-      throttlePendingRef.current = false;
-      evaluateNow();
-      if (pending) {
-        triggerEvaluate();
-      }
-    }, 150);
-  };
+  // (legacy inlined functions removed; using useCallback versions above)
 
   return state;
 }

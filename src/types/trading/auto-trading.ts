@@ -3,7 +3,7 @@ export type PositionMode = 'one_way' | 'hedge';
 export type PositionPreference = 'long' | 'short' | 'both';
 export type MarginBasis = 'wallet' | 'total' | 'free' | 'tree';
 export type InitialMarginMode = 'per_symbol_percentage' | 'all_symbols_percentage' | 'min_notional' | 'usdt_amount';
-export type ScaleInBudgetMode = 'usdt_amount' | 'balance_percentage' | 'per_symbol_percentage' | 'min_notional';
+export type ScaleInBudgetMode = 'usdt_amount' | 'balance_percentage' | 'per_symbol_percentage' | 'position_percent' | 'min_notional';
 export type TimeframeOption =
   | '1m'
   | '3m'
@@ -421,6 +421,10 @@ export type SymbolSelection = {
   autoFillRecheck?: boolean;
   excludeTopGainers?: number | null;
   excludeTopLosers?: number | null;
+  /** 거래량 하위 N 제외 */
+  excludeBottomVolume?: number | null;
+  /** 거래금액(시총 프록시) 하위 N 제외 */
+  excludeBottomMarketCap?: number | null;
 };
 
 export type AutoTradingSettingsMetadata = {

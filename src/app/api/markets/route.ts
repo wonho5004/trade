@@ -52,6 +52,15 @@ export async function GET(req: Request) {
     return NextResponse.json({ items: filtered.slice(0, limit) }, { status: 200 });
   } catch (error) {
     console.error('[api/markets] failed', error);
-    return NextResponse.json({ items: [] }, { status: 200 });
+    const requestId = (globalThis as any).crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    return NextResponse.json(
+      {
+        success: false,
+        error: { code: 'INTERNAL', message: '시장 데이터를 불러오는 중 오류가 발생했습니다.' },
+        requestId,
+        ts: new Date().toISOString()
+      },
+      { status: 500 }
+    );
   }
 }

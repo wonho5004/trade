@@ -64,13 +64,20 @@
    - 구현: `src/app/api/markets/validate/route.ts`, `src/lib/trading/markets.ts#fetchPerpetualSymbolSet`
    - 프론트 연동: 심볼 섹션 저장 시 서버 검증 후 저장. 실패 시 섹션 토스트 에러로 사유 표시
 4) Phase 2 연동: 레버리지 티어 기반 마진 계산(최소/최대/수량 산식) + UI 가이드
+   - 진행: 코어 계산 유틸 분리/구현 완료(`src/lib/trading/margin.ts`), 티어 정규화 어댑터 추가
+   - 잔여: ETH/USDT 150x 등 주요 시나리오 수동 QA, 한도/라벨 UI 교차검증, 계산식 사용자 가이드 반영
 5) 전략 관리 UI: 현재/백업 조회(관리자), 재발행/삭제/복원, 이름 중복 서버 기반 검사
+   - API 확장 제안: `GET /api/strategies/list`, `POST /api/strategies/backup`, `POST /api/strategies/restore`, `DELETE /api/strategies/:id`
+   - 프론트: 설정 페이지 하단 “전략 관리” 패널(버전/백업/복원/삭제)
+6) 접기 상태 영속화: 섹션 접기/펼치기 상태를 로컬에 저장(`uiPreferencesStore`)하고 새로고침 후 유지
+7) 에러 포맷 표준화: API/프론트 공통 에러 스키마 합의(JSON), 토스트/필드 하이라이트와 일관 연결
 
 ## 8) 빠른 검증 방법
 - 페이지: `/trading/automation` → 각 섹션에서 편집/저장/토스트 확인
 - 모달: “조건 추가/편집” → 지표/그룹 편집, DnD/Undo/Redo 동작 확인
 - 심볼: 종목/제외/오버라이드 추가/제거, 값 범위/정규화(BTC/USDT → BTCUSDT) 확인
 - 테스트: `npm test` (Jest), 린트: `npm run lint`
+- Phase 2 수동 QA: `docs/qa/phase2-margin-qa.md`
 
 ## 9) 파일 레퍼런스(핵심)
 - 타입/기본값: `src/types/trading/auto-trading.ts`, `src/lib/trading/autoTradingDefaults.ts`

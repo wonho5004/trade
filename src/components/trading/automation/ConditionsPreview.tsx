@@ -73,7 +73,7 @@ export function ConditionsPreview({
     } catch {
       return [] as any[];
     }
-  }, [conditions, extras?.series, context?.candleCurrent, indicatorSignals, constraints, runtime]);
+  }, [conditions, context, extras?.series, indicatorSignals, constraints, runtime]);
   const plannedWithFlags = useMemo(() => (
     planned.map((o: any) => {
       // action-level overrides from raw cfg
@@ -526,13 +526,13 @@ export function ConditionsPreview({
               type="button"
               className="rounded border border-rose-600 px-2 py-0.5 text-[11px] text-rose-300"
               onClick={async () => {
-                if (plannedWithFlags.length > safety.maxOrders) {
-                  alert(`안전장치: 최대 주문수(${safety.maxOrders}) 초과`);
+                if (plannedWithFlags.length > (safety?.maxOrders ?? Infinity)) {
+                  alert(`안전장치: 최대 주문수(${safety?.maxOrders ?? '-'}) 초과`);
                   return;
                 }
-                const over = plannedWithFlags.find((o) => (Number(o.notional) || 0) > safety.maxNotional);
+                const over = plannedWithFlags.find((o) => (Number(o.notional) || 0) > (safety?.maxNotional ?? Number.POSITIVE_INFINITY));
                 if (over) {
-                  alert(`안전장치: 1건 최대금액(${safety.maxNotional}) 초과 (${over.notional})`);
+                  alert(`안전장치: 1건 최대금액(${safety?.maxNotional ?? '-'}) 초과 (${over.notional})`);
                   return;
                 }
                 if (!confirm('주의: 실주문을 전송합니다. 환경변수/API키가 설정되어 있어야 합니다. 계속하시겠습니까?')) return;
@@ -555,14 +555,14 @@ export function ConditionsPreview({
           </div>
           {sendResult ? (
             <div className="rounded border border-zinc-800 bg-zinc-950/60 p-2 text-[11px] text-zinc-300">
-              <div className="mb-1 text-zinc-400">전송 결과{sendResult.dryRun ? ' (모의)' : ''}</div>
+              <div className="mb-1 text-zinc-400">전송 결과{sendResult?.dryRun ? ' (모의)' : ''}</div>
               {sendResult.error ? (
                 <div className="text-rose-400">{sendResult.error}</div>
               ) : sendResult.results ? (
                 <ul className="space-y-1">
-              {sendResult.safety ? (
+              {(sendResult as any)?.safety ? (
                 <div className="mb-1 text-[11px] text-zinc-400">
-                  안전장치: 주문 {sendResult.safety.orderCount ?? '-'} / 최대 {sendResult.safety.maxOrders ?? '-'} · 위반 {Array.isArray(sendResult.safety.violations) ? sendResult.safety.violations.length : 0}건 · 1건 최대 {sendResult.safety.maxNotional ?? '-'} · 보정 {sendResult.safety.useMinNotionalFallback ? 'ON' : 'OFF'}
+                  안전장치: 주문 {(sendResult as any)?.safety?.orderCount ?? '-'} / 최대 {(sendResult as any)?.safety?.maxOrders ?? '-'} · 위반 {Array.isArray((sendResult as any)?.safety?.violations) ? ((sendResult as any)?.safety?.violations?.length ?? 0) : 0}건 · 1건 최대 {(sendResult as any)?.safety?.maxNotional ?? '-'} · 보정 {(sendResult as any)?.safety?.useMinNotionalFallback ? 'ON' : 'OFF'}
                 </div>
               ) : null}
               {sendResult.results.map((r: any, idx: number) => (
@@ -575,7 +575,7 @@ export function ConditionsPreview({
                     ) : null}
                     {(() => {
                       try {
-                        const violated = Array.isArray(sendResult.safety?.violations) && sendResult.safety.violations.some((v: any) => v?.index === idx);
+                        const violated = Array.isArray((sendResult as any)?.safety?.violations) && (sendResult as any)?.safety?.violations?.some((v: any) => v?.index === idx);
                         return violated ? <span className="rounded border border-rose-600 px-1 py-0.5 text-[10px] text-rose-300" title="1건 최대 금액 위반">maxN</span> : null;
                       } catch { return null; }
                     })()}

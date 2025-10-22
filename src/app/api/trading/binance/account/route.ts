@@ -1,10 +1,17 @@
 // @ts-nocheck
 import { NextResponse } from 'next/server';
 import { createBinanceFuturesClient } from '@/lib/trading/exchange';
+import { getAuthenticatedProfile } from '@/lib/users/profile';
 
 export async function GET(req: Request) {
   try {
-    const client = createBinanceFuturesClient();
+    // Attach user credentials if available
+    const prof = await getAuthenticatedProfile();
+    const hasKeys = Boolean(prof?.binanceApiKey && prof?.binanceApiSecret);
+    if (!hasKeys) {
+      return NextResponse.json({ ok: false, error: 'MISSING_API_KEYS', message: '마이페이지에서 Binance API Key/Secret을 등록하세요.' }, { status: 401 });
+    }
+    const client = createBinanceFuturesClient({ apiKey: prof!.binanceApiKey!, secret: prof!.binanceApiSecret! });
     // Note: ccxt binanceusdm fetchBalance returns futures wallet balances
     const balance = await client.fetchBalance();
     let positions: any[] = [];

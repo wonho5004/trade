@@ -1,6 +1,7 @@
 'use client';
 
-import { useFormState, useFormStatus } from 'react-dom';
+import { useActionState } from 'react';
+import { useFormStatus } from 'react-dom';
 import Link from 'next/link';
 
 import { registerAction } from '@/app/(auth)/actions';
@@ -21,7 +22,7 @@ function SubmitButton({ label }: { label: string }) {
 }
 
 export function RegisterForm() {
-  const [state, dispatch] = useFormState(registerAction, initialState);
+  const [state, dispatch] = useActionState(registerAction, initialState);
 
   return (
     <form action={dispatch} className="space-y-6 rounded-lg border border-zinc-800 bg-zinc-900 p-6 shadow-lg">

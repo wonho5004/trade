@@ -42,6 +42,17 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
         durationMs: toast.durationMs ?? 2500,
         actions: toast.actions
       };
+      // If description contains a requestId, add a quick copy action for troubleshooting
+      try {
+        const m = (next.description || '').match(/요청ID:\s*([A-Za-z0-9-]+)/);
+        if (m && m[1]) {
+          const rid = m[1];
+          const hasCopy = Array.isArray(next.actions) && next.actions.some((a) => a.label.includes('복사'));
+          if (!hasCopy) {
+            next.actions = [...(next.actions ?? []), { label: 'ID 복사', onClick: () => void navigator.clipboard?.writeText(rid) }];
+          }
+        }
+      } catch {}
       setToasts((prev) => [...prev, next]);
       if (next.durationMs && next.durationMs > 0) {
         setTimeout(() => dismiss(id), next.durationMs);

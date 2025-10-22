@@ -11,7 +11,7 @@ import { recordUserActivity } from '@/lib/logs/audit';
 const ROLE_OPTIONS: UserRole[] = ['guest', 'member', 'admin', 'sys_admin'];
 
 async function requireSystemAdmin() {
-  const { token, role } = readAuthCookies();
+  const { token, role } = await readAuthCookies();
   if (!token) {
     throw new Error('인증 정보가 없습니다. 다시 로그인해 주세요.');
   }

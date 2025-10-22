@@ -79,30 +79,42 @@ export const useUIPreferencesStore = create<UIPreferencesState>()(
       getSymbolsPickerPrefs: () => {
         const box = get().autoTrading?.symbolsPicker;
         if (box && box.columns && box.filters) return box;
-        // hydrate missing prefs with defaults (for older persisted states)
-        set((state) => ({
-          autoTrading: {
-            ...state.autoTrading,
-            symbolsPicker: state.autoTrading.symbolsPicker ?? defaultState.symbolsPicker
-          }
-        }));
+        // 렌더 중 set() 호출을 피하기 위해 기본값만 반환하고,
+        // 실제 저장은 updateSymbolsPickerPrefs 경로에서 처리한다.
         return defaultState.symbolsPicker;
       },
-      updateSymbolsPickerPrefs: (patch) =>
-        set((state) => {
-          const base = state.autoTrading.symbolsPicker ?? defaultState.symbolsPicker;
-          return {
-            autoTrading: {
-              ...state.autoTrading,
-              symbolsPicker: {
-                columns: { ...base.columns, ...(patch.columns ?? {}) },
-                filters: { ...base.filters, ...(patch.filters ?? {}) },
-                columnsOrder: (patch as any).columnsOrder ? ([...((patch as any).columnsOrder)] as any) : base.columnsOrder,
-                columnsWidth: (patch as any).columnsWidth ? ({ ...base.columnsWidth, ...((patch as any).columnsWidth) } as any) : base.columnsWidth
-              }
-            }
-          };
-        })
+      updateSymbolsPickerPrefs: (patch) => {
+        const state = get();
+        const base = state.autoTrading.symbolsPicker ?? defaultState.symbolsPicker;
+        const next = {
+          columns: { ...base.columns, ...(patch.columns ?? {}) },
+          filters: { ...base.filters, ...(patch.filters ?? {}) },
+          columnsOrder: (patch as any).columnsOrder ? ([...((patch as any).columnsOrder)] as any) : base.columnsOrder,
+          columnsWidth: (patch as any).columnsWidth ? ({ ...base.columnsWidth, ...((patch as any).columnsWidth) } as any) : base.columnsWidth
+        } as AutoTradingUIPreferences['symbolsPicker'];
+
+        const eqObj = (a: any, b: any) => {
+          const ak = Object.keys(a);
+          const bk = Object.keys(b);
+          if (ak.length !== bk.length) return false;
+          for (const k of ak) if (a[k] !== (b as any)[k]) return false;
+          return true;
+        };
+        const eqArr = (a: any[], b: any[]) => a.length === b.length && a.every((v, i) => v === b[i]);
+        const unchanged =
+          eqObj(base.columns, next.columns) &&
+          eqObj(base.filters, next.filters) &&
+          eqArr(base.columnsOrder as any, next.columnsOrder as any) &&
+          eqObj(base.columnsWidth, next.columnsWidth);
+        if (unchanged) return; // do not call set
+
+        set({
+          autoTrading: {
+            ...state.autoTrading,
+            symbolsPicker: next
+          }
+        } as any);
+      }
     }),
     {
       name: 'ui-preferences-v1',

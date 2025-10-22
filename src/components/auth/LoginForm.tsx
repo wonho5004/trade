@@ -1,6 +1,7 @@
 'use client';
 
-import { useFormState, useFormStatus } from 'react-dom';
+import { useActionState } from 'react';
+import { useFormStatus } from 'react-dom';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 
@@ -24,7 +25,7 @@ function SubmitButton({ label }: { label: string }) {
 export function LoginForm() {
   const searchParams = useSearchParams();
   const redirectTo = searchParams.get('next') ?? '/dashboard';
-  const [state, dispatch] = useFormState(loginAction, initialState);
+  const [state, dispatch] = useActionState(loginAction, initialState);
 
   return (
     <form action={dispatch} className="space-y-6 rounded-lg border border-zinc-800 bg-zinc-900 p-6 shadow-lg">

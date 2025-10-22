@@ -1,19 +1,181 @@
 "use client";
 
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { CapitalSettings, MarginBasis } from '@/types/trading/auto-trading';
+import { Segmented } from '@/components/common/Segmented';
+import { HelpModal } from '@/components/common/HelpModal';
 
-export function CapitalSettingsPanel({ capital, symbolCount, onChange }: { capital: CapitalSettings; symbolCount: number; onChange: (next: CapitalSettings) => void }) {
+export function CapitalSettingsPanel({ capital, symbolCount, manualSymbols, leverage = 1, onChange }: { capital: CapitalSettings; symbolCount: number; manualSymbols?: string[]; leverage?: number; onChange: (next: CapitalSettings) => void }) {
   const [balances, setBalances] = useState<{ wallet?: number; total?: number; free?: number }>({});
+  const [cred, setCred] = useState<{ ok?: boolean; hasKey?: boolean } | null>(null);
+  const [loadingBal, setLoadingBal] = useState(false);
   const quote = capital.initialMargin.asset ?? 'USDT';
+  const [minNotionalHint, setMinNotionalHint] = useState<number | null>(null);
+  const [calcBasis, setCalcBasis] = useState<'estimated'|'wallet'|'total'|'free'>('estimated');
+  const [marketsMeta, setMarketsMeta] = useState<Array<any>>([]);
+  const [showInitialMinModal, setShowInitialMinModal] = useState(false);
+  const [showScaleMinModal, setShowScaleMinModal] = useState(false);
+  const [showBalancePickModal, setShowBalancePickModal] = useState(false);
+  const [fetchedBalances, setFetchedBalances] = useState<{ wallet?: number | null; total?: number | null; free?: number | null } | null>(null);
+  const renderMinNotionalTable = (kind: 'initial' | 'scale') => {
+    const norm = (s: string) => s.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const list = Array.isArray(manualSymbols) ? manualSymbols : [];
+    const wanted = new Set(list.map((s) => {
+      const n = norm(s);
+      return n.endsWith(quote) ? n : `${n}${quote}`;
+    }));
+    const rows = marketsMeta
+      .filter((m) => wanted.has(String(m?.symbol || '').toUpperCase()))
+      .map((m) => {
+        const minNotional = Number(m?.minNotional ?? 0) || 0;
+        const walletUse = minNotional / Math.max(1, Number(leverage) || 1);
+        const pricePrecision = Number(m?.pricePrecision ?? NaN);
+        const quantityPrecision = Number(m?.quantityPrecision ?? NaN);
+        const priceTick = Number.isFinite(pricePrecision) ? Math.pow(10, -pricePrecision) : null;
+        const qtyStep = Number.isFinite(quantityPrecision) ? Math.pow(10, -quantityPrecision) : null;
+        const tiers = Array.isArray(m?.leverageBrackets) ? (m.leverageBrackets as Array<any>) : [];
+        const maxLev = tiers.reduce((acc, t) => Math.max(acc, Number(t?.maxLeverage ?? 0) || 0), 0) || null;
+        return {
+          symbol: String(m.symbol).toUpperCase(),
+          minNotional,
+          walletUse,
+          priceTick,
+          qtyStep,
+          maxLeverage: maxLev
+        };
+      })
+      .sort((a, b) => a.symbol.localeCompare(b.symbol));
+    const totalMin = rows.reduce((s, r) => s + (r.minNotional || 0), 0);
+    const totalWallet = rows.reduce((s, r) => s + (r.walletUse || 0), 0);
+    const recommended = rows.reduce((mx, r) => Math.max(mx, r.minNotional || 0), 0);
+    return (
+      <div>
+        <table className="w-full table-fixed text-left text-[12px]">
+          <thead className="text-zinc-400">
+            <tr>
+              <th className="px-2 py-1">심볼</th>
+              <th className="px-2 py-1">최소 주문</th>
+              <th className="px-2 py-1">지갑 사용액(/{quote})</th>
+              <th className="px-2 py-1">최대 레버리지</th>
+              <th className="px-2 py-1">가격 틱</th>
+              <th className="px-2 py-1">수량 스텝</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-zinc-800">
+            {rows.map((r) => (
+              <tr key={r.symbol}>
+                <td className="px-2 py-1 text-zinc-200">{r.symbol}</td>
+                <td className="px-2 py-1">{fmt(r.minNotional)}</td>
+                <td className="px-2 py-1">{fmt(r.walletUse)}</td>
+                <td className="px-2 py-1">{r.maxLeverage ?? '-'}</td>
+                <td className="px-2 py-1">{r.priceTick != null ? r.priceTick.toExponential() : '-'}</td>
+                <td className="px-2 py-1">{r.qtyStep != null ? r.qtyStep.toExponential() : '-'}</td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot className="border-t border-zinc-800 text-zinc-300">
+            <tr>
+              <td className="px-2 py-1">합계</td>
+              <td className="px-2 py-1">{fmt(totalMin)}</td>
+              <td className="px-2 py-1">{fmt(totalWallet)}</td>
+              <td className="px-2 py-1" colSpan={3} />
+            </tr>
+          </tfoot>
+        </table>
+        <p className="mt-2 text-[11px] text-zinc-500">지갑 사용액 = 최소 주문 금액 ÷ 레버리지</p>
+        <div className="mt-3 flex items-center gap-2">
+          <button
+            type="button"
+            className="rounded border border-emerald-600 px-2 py-0.5 text-[12px] text-emerald-300"
+            onClick={() => {
+              if (kind === 'initial') setIM({ minNotional: Number(recommended) || 0 });
+              else setSIB({ minNotional: Number(recommended) || 0 });
+              if (kind === 'initial') setShowInitialMinModal(false); else setShowScaleMinModal(false);
+            }}
+          >
+            {kind === 'initial' ? '초기값에 일괄 적용' : '추매값에 일괄 적용'}
+          </button>
+          <span className="text-[11px] text-zinc-400">추천: {fmt(recommended)} {quote}</span>
+        </div>
+      </div>
+    );
+  };
+
+  useEffect(() => {
+    // 사전 자격 확인 (선택사항)
+    (async () => {
+      try {
+        const res = await fetch('/api/profile/credentials');
+        if (!res.ok) return setCred({ ok: false, hasKey: false });
+        const js = await res.json();
+        const has = Boolean(js?.hasBinanceApiKey && js?.hasBinanceApiSecret);
+        setCred({ ok: true, hasKey: has });
+      } catch {
+        setCred({ ok: false, hasKey: false });
+      }
+    })();
+  }, []);
+
+  // Compute recommended minNotional across selected manual symbols for current quote
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const list = Array.isArray(manualSymbols) ? manualSymbols : [];
+        if (list.length === 0) { setMinNotionalHint(null); return; }
+        const res = await fetch('/api/trading/binance/futures-symbols');
+        if (!res.ok) { setMinNotionalHint(null); return; }
+        const js = await res.json();
+        const markets: Array<any> = Array.isArray(js?.markets) ? js.markets : [];
+        setMarketsMeta(markets);
+        const norm = (s: string) => s.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+        const wanted = new Set(list.map((s) => {
+          const n = norm(s);
+          return n.endsWith(quote) ? n : `${n}${quote}`;
+        }));
+        let maxMin: number | null = null;
+        for (const m of markets) {
+          try {
+            const sym = String(m?.symbol || '').toUpperCase();
+            if (!wanted.has(sym)) continue;
+            const val = Number(m?.minNotional);
+            if (Number.isFinite(val)) maxMin = maxMin == null ? val : Math.max(maxMin, val);
+          } catch {}
+        }
+        if (!cancelled) setMinNotionalHint(maxMin);
+      } catch {
+        if (!cancelled) setMinNotionalHint(null);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [manualSymbols, quote]);
 
   const set = (patch: Partial<CapitalSettings>) => onChange({ ...capital, ...patch });
   const setIM = (patch: Partial<CapitalSettings['initialMargin']>) => set({ initialMargin: { ...capital.initialMargin, ...patch } });
   const setSIB = (patch: Partial<CapitalSettings['scaleInBudget']>) => set({ scaleInBudget: { ...capital.scaleInBudget, ...patch } });
   const setLimit = (patch: Partial<CapitalSettings['scaleInLimit']>) => set({ scaleInLimit: { ...capital.scaleInLimit, ...patch } as any });
+  const setMM = (patch: Partial<CapitalSettings['maxMargin']>) => set({ maxMargin: { ...capital.maxMargin, ...patch } });
+  const [autoRescale, setAutoRescale] = useState<boolean>(Boolean((capital as any).autoRescale));
+  const [preserveRatio, setPreserveRatio] = useState<boolean>(Boolean((capital as any).preserveRatio));
 
   const basisAmount = (basis: MarginBasis, perSymbol: boolean) => {
-    const b = basis === 'wallet' ? (balances.wallet ?? capital.estimatedBalance) : basis === 'total' ? (balances.total ?? capital.estimatedBalance) : (balances.free ?? capital.estimatedBalance);
+    // Calculation source priority: user-chosen calcBasis
+    let baseVal: number | undefined;
+    if (calcBasis === 'estimated') {
+      baseVal = capital.estimatedBalance;
+    } else if (calcBasis === 'wallet') {
+      baseVal = balances.wallet;
+    } else if (calcBasis === 'total') {
+      baseVal = balances.total;
+    } else if (calcBasis === 'free') {
+      baseVal = balances.free;
+    }
+    // Fallback to basis-specific value if calcBasis unavailable
+    const b = (baseVal ?? (
+      basis === 'wallet' ? (balances.wallet ?? capital.estimatedBalance) :
+      basis === 'total' ? (balances.total ?? capital.estimatedBalance) :
+      (balances.free ?? capital.estimatedBalance)
+    ));
     const base = perSymbol ? (b / Math.max(1, symbolCount)) : b;
     return base;
   };
@@ -36,6 +198,104 @@ export function CapitalSettingsPanel({ capital, symbolCount, onChange }: { capit
     return 0;
   })();
 
+  // Per-symbol and total expected amounts (cards)
+  const initialPerSymbol = useMemo(() => {
+    const im = capital.initialMargin;
+    if (im.mode === 'usdt_amount') return im.usdtAmount ?? 0;
+    if (im.mode === 'min_notional') return im.minNotional ?? 0;
+    if (im.mode === 'per_symbol_percentage') return basisAmount(im.basis, true) * ((im.percentage ?? 0) / 100);
+    if (im.mode === 'all_symbols_percentage') {
+      const total = basisAmount(im.basis, false) * ((im.percentage ?? 0) / 100);
+      return total / Math.max(1, symbolCount);
+    }
+    return 0;
+  }, [capital.initialMargin, balances, symbolCount]);
+  const initialTotal = initialPerSymbol * Math.max(1, symbolCount);
+  const scalePerSymbol = useMemo(() => {
+    const sb = capital.scaleInBudget;
+    if (sb.mode === 'usdt_amount') return (sb.usdtAmount ?? 0) / Math.max(1, symbolCount);
+    if (sb.mode === 'min_notional') return sb.minNotional ?? 0;
+    if (sb.mode === 'per_symbol_percentage') return basisAmount(sb.basis, true) * ((sb.percentage ?? 0) / 100);
+    if (sb.mode === 'balance_percentage') {
+      const total = basisAmount(sb.basis, false) * ((sb.percentage ?? 0) / 100);
+      return total / Math.max(1, symbolCount);
+    }
+    return 0;
+  }, [capital.scaleInBudget, balances, symbolCount]);
+  const scaleTotal = useMemo(() => {
+    const sb = capital.scaleInBudget;
+    if (sb.mode === 'usdt_amount') return sb.usdtAmount ?? 0;
+    if (sb.mode === 'min_notional') return (sb.minNotional ?? 0) * Math.max(1, symbolCount);
+    if (sb.mode === 'per_symbol_percentage') return scalePerSymbol * Math.max(1, symbolCount);
+    if (sb.mode === 'balance_percentage') return basisAmount(sb.basis, false) * ((sb.percentage ?? 0) / 100);
+    if (sb.mode === 'position_percent') return initialTotal * ((sb.percentage ?? 0) / 100);
+    return 0;
+  }, [capital.scaleInBudget, balances, symbolCount, scalePerSymbol]);
+
+  // Percent estimates for allocation bar (all relative to maxMargin.basis)
+  const barBasis = capital.maxMargin?.basis ?? 'wallet';
+  const barBaseTotal = basisAmount(barBasis as MarginBasis, false);
+  const initialPct = useMemo(() => {
+    const amount = Number(initialTotal) || 0;
+    return barBaseTotal > 0 ? (amount / barBaseTotal) * 100 : 0;
+  }, [initialTotal, barBaseTotal]);
+  const scalePct = useMemo(() => {
+    const amount = Number(scaleTotal) || 0;
+    return barBaseTotal > 0 ? (amount / barBaseTotal) * 100 : 0;
+  }, [scaleTotal, barBaseTotal]);
+  const maxPct = Math.max(0, Math.min(100, capital.maxMargin.percentage ?? 0));
+  const usedPct = Math.max(0, Math.min(maxPct, initialPct + scalePct));
+  const leftoverPct = Math.max(0, maxPct - usedPct);
+  const iNorm = maxPct > 0 ? (Math.max(0, Math.min(initialPct, maxPct)) / maxPct) * 100 : 0;
+  const sNorm = maxPct > 0 ? (Math.max(0, Math.min(scalePct, Math.max(0, maxPct - Math.min(initialPct, maxPct)))) / maxPct) * 100 : 0;
+  const lNorm = Math.max(0, 100 - iNorm - sNorm);
+
+  // Auto clip to maxBudget on limit changes when preserveRatio is enabled
+  const [rescalingNonce, setRescalingNonce] = useState(0);
+  useEffect(() => {
+    if (!preserveRatio) return;
+    const baseTotal = basisAmount(capital.maxMargin.basis, false);
+    const maxBudget = (baseTotal * capital.maxMargin.percentage) / 100;
+    const used = initialTotal + scaleTotal;
+    if (used > maxBudget + 1e-8 && used > 0) {
+      const k = maxBudget / used;
+      const count = Math.max(1, symbolCount || 1);
+
+      const clampPct = (v: number) => Math.max(0, Math.min(100, Number.isFinite(v) ? v : 0));
+      const round2 = (v: number) => Math.round(v * 100) / 100;
+
+      const newInitialTotal = initialTotal * k;
+      const newScaleTotal = scaleTotal * k;
+
+      const im = { ...capital.initialMargin } as any;
+      if (im.mode === 'usdt_amount') im.usdtAmount = round2(newInitialTotal);
+      else if (im.mode === 'min_notional') im.minNotional = round2(newInitialTotal / count);
+      else if (im.mode === 'per_symbol_percentage') {
+        const perBase = basisAmount(im.basis ?? capital.maxMargin.basis, true);
+        im.percentage = clampPct((newInitialTotal / count / Math.max(1e-9, perBase)) * 100);
+      } else if (im.mode === 'all_symbols_percentage') {
+        const totBase = basisAmount(im.basis ?? capital.maxMargin.basis, false);
+        im.percentage = clampPct((newInitialTotal / Math.max(1e-9, totBase)) * 100);
+      }
+
+      const sb = { ...capital.scaleInBudget } as any;
+      if (sb.mode === 'usdt_amount') sb.usdtAmount = round2(newScaleTotal);
+      else if (sb.mode === 'min_notional') sb.minNotional = round2(newScaleTotal / count);
+      else if (sb.mode === 'per_symbol_percentage') {
+        const perBase = basisAmount(sb.basis ?? capital.maxMargin.basis, true);
+        sb.percentage = clampPct((newScaleTotal / count / Math.max(1e-9, perBase)) * 100);
+      } else if (sb.mode === 'balance_percentage') {
+        const totBase = basisAmount(sb.basis ?? capital.maxMargin.basis, false);
+        sb.percentage = clampPct((newScaleTotal / Math.max(1e-9, totBase)) * 100);
+      }
+
+      onChange({ ...(capital as any), initialMargin: im, scaleInBudget: sb } as any);
+      setRescalingNonce((x) => x + 1);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [capital.maxMargin.percentage, capital.maxMargin.basis]);
+
+
   return (
     <div className="space-y-3 text-xs text-zinc-300">
       <div className="flex flex-wrap items-center gap-2">
@@ -47,28 +307,84 @@ export function CapitalSettingsPanel({ capital, symbolCount, onChange }: { capit
         <span className="ml-3 text-zinc-400">투자 금액</span>
         <input type="number" className="w-28 rounded border border-zinc-700 bg-zinc-900 px-2 py-1" value={capital.estimatedBalance}
           onChange={(e) => set({ estimatedBalance: Math.max(0, Number(e.target.value) || 0) })} />
-        <button type="button" className="rounded border border-zinc-700 px-2 py-1 text-zinc-300" onClick={async () => {
-          try {
-            const symbol = quote === 'USDT' ? 'BTCUSDT' : 'BTCUSDC';
-            const res = await fetch(`/api/trading/binance/account?symbol=${symbol}`);
-            const json = await res.json();
-            const key = (k: string) => `${k}${quote}`;
-            setBalances({ wallet: Number(json?.account?.[key('wallet')] ?? NaN), total: Number(json?.account?.[key('total')] ?? NaN), free: Number(json?.account?.[key('free')] ?? NaN) });
-          } catch {}
-        }}>잔고 조회</button>
+        <button
+          type="button"
+          disabled={loadingBal}
+          className="rounded border border-zinc-700 px-2 py-1 text-zinc-300 disabled:opacity-50"
+          onClick={async () => {
+            try {
+              setLoadingBal(true);
+              // API Key 확인
+              const credRes = await fetch('/api/profile/credentials');
+              if (!credRes.ok) { setCred({ ok: false, hasKey: false }); return; }
+              const cj = await credRes.json();
+              const has = Boolean(cj?.hasBinanceApiKey && cj?.hasBinanceApiSecret);
+              setCred({ ok: true, hasKey: has });
+              if (!has) return;
+              const symbol = quote === 'USDT' ? 'BTCUSDT' : 'BTCUSDC';
+              const res = await fetch(`/api/trading/binance/account?symbol=${symbol}`);
+              if (!res.ok) {
+                try {
+                  const js = await res.json();
+                  // optional toast, if provider exists
+                  // dynamic import avoided; this panel may be used without ToastProvider
+                  console.warn('잔고 조회 실패', js);
+                } catch {}
+                return;
+              }
+              const json = await res.json();
+              const key = (k: string) => `${k}${quote}`;
+              setBalances({ wallet: Number(json?.account?.[key('wallet')] ?? NaN), total: Number(json?.account?.[key('total')] ?? NaN), free: Number(json?.account?.[key('free')] ?? NaN) });
+              setFetchedBalances({ wallet: Number(json?.account?.[key('wallet')] ?? NaN), total: Number(json?.account?.[key('total')] ?? NaN), free: Number(json?.account?.[key('free')] ?? NaN) });
+              setShowBalancePickModal(true);
+            } catch {
+              // ignore
+            } finally {
+              setLoadingBal(false);
+            }
+          }}
+        >
+          {loadingBal ? '조회 중…' : '잔고 조회'}
+        </button>
         <span className="text-zinc-500">Wallet {fmt(balances.wallet)} · Total {fmt(balances.total)} · Free {fmt(balances.free)}</span>
-      </div>
+        <span className="ml-3 text-zinc-400">계산 기준</span>
+        <Segmented
+          ariaLabel="calculation basis"
+          value={calcBasis}
+          onChange={(v) => setCalcBasis(v as any)}
+          options={[
+            { label: '입력값', value: 'estimated' },
+            { label: 'Wallet', value: 'wallet' },
+            { label: 'Total', value: 'total' },
+            { label: 'Free', value: 'free' }
+          ]}
+        />
+        {cred && cred.ok && cred.hasKey === false ? (
+          <span className="ml-2 rounded border border-amber-600/60 bg-amber-900/30 px-2 py-0.5 text-amber-200">API Key/Secret 미등록 · 마이페이지에서 등록하세요.</span>
+        ) : null}
+     </div>
 
       <label className="flex items-center gap-2">
         <input type="checkbox" className="h-4 w-4" checked={Boolean(capital.useMinNotionalFallback)} onChange={(e) => set({ useMinNotionalFallback: e.target.checked })} />
         <span>최소 주문단위 이하 주문 시 최소 주문단위 사용</span>
       </label>
 
-      <div className="rounded border border-zinc-800 bg-zinc-950/60 p-3">
+      <div id="initial-settings" className="rounded border border-zinc-800 bg-zinc-950/60 p-3">
         <div className="mb-1 font-medium text-zinc-100">최초 매수 금액 설정</div>
         <div className="grid gap-2 md:grid-cols-2">
           <div className="space-y-2">
             <div className="space-y-2">
+              <Segmented
+                ariaLabel="initial margin mode"
+                value={capital.initialMargin.mode}
+                onChange={(v) => setIM({ mode: v as any })}
+                options={[
+                  { label: '직접 입력', value: 'usdt_amount' },
+                  { label: '잔고(총)', value: 'all_symbols_percentage' },
+                  { label: '잔고(종목당)', value: 'per_symbol_percentage' },
+                  { label: '최소 주문', value: 'min_notional' }
+                ]}
+              />
               <label className="flex items-center gap-2"><input type="radio" name="im-mode" checked={capital.initialMargin.mode==='usdt_amount'} onChange={() => setIM({ mode: 'usdt_amount' })} /> 직접 입력</label>
               {capital.initialMargin.mode==='usdt_amount' ? (
                 <div className="flex items-center gap-2 pl-5">
@@ -78,6 +394,9 @@ export function CapitalSettingsPanel({ capital, symbolCount, onChange }: { capit
                   </select>
                   <input type="number" className="w-28 rounded border border-zinc-700 bg-zinc-900 px-2 py-1" value={capital.initialMargin.usdtAmount}
                     onChange={(e) => setIM({ usdtAmount: Math.max(0, Number(e.target.value) || 0) })} />
+                  {String(capital.initialMargin.asset ?? 'USDT') !== String(quote) ? (
+                    <span className="text-rose-400 text-[11px]">쿼트({quote})와 동일한 통화로 입력하세요.</span>
+                  ) : null}
                 </div>
               ) : null}
 
@@ -114,20 +433,258 @@ export function CapitalSettingsPanel({ capital, symbolCount, onChange }: { capit
               ) : null}
 
               <label className="flex items-center gap-2"><input type="radio" name="im-mode" checked={capital.initialMargin.mode==='min_notional'} onChange={() => setIM({ mode: 'min_notional' })} /> 최소 주문 단위 사용</label>
+              {capital.initialMargin.mode==='min_notional' ? (
+                <div className="pl-5 text-zinc-500">
+                  심볼별 최소 주문 금액을 사용합니다.
+                  {minNotionalHint != null ? (
+                    <>
+                      <span className="ml-2 text-zinc-400">추천 {fmt(minNotionalHint)}</span>
+                      <button
+                        type="button"
+                        className="ml-2 rounded border border-zinc-700 px-2 py-0.5 text-[11px] text-zinc-300 hover:border-emerald-600/60 hover:text-emerald-200"
+                        onClick={() => setIM({ minNotional: Number(minNotionalHint) || 0 })}
+                      >
+                        적용
+                      </button>
+                      <button
+                        type="button"
+                        className="ml-2 rounded border border-zinc-700 px-2 py-0.5 text-[11px] text-zinc-300 hover:border-emerald-600/60 hover:text-emerald-200"
+                        onClick={() => setShowInitialMinModal(true)}
+                      >
+                        예상주문금액 확인
+                      </button>
+                    </>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
           </div>
           <div className="space-y-2">
             <div className="text-zinc-400">예상 최초 매수 금액: <span className="text-zinc-200">{fmt(expectedInitial)}</span> {capital.initialMargin.asset ?? 'USDT'}</div>
+            <div className="text-zinc-500 text-[11px]">레버리지 {leverage}x 기준 지갑 사용액 ≈ {fmt(Number(expectedInitial) / Math.max(1, Number(leverage) || 1))} {capital.initialMargin.asset ?? 'USDT'}</div>
+            <div className="text-zinc-400">예상 추가 매수 예산: <span className="text-zinc-200">{fmt(expectedScale)}</span> {capital.scaleInBudget.asset ?? 'USDT'}</div>
             <p className="text-zinc-500">종목당 기준은 총잔고를 종목 수({symbolCount})로 나눈 값에 비율을 적용합니다.</p>
           </div>
         </div>
       </div>
 
-      <div className="rounded border border-zinc-800 bg-zinc-950/60 p-3">
+      {/* Global basis + max limit controls */}
+      <div className="mt-2 flex flex-wrap items-center gap-3">
+        <span className="text-zinc-400">기준</span>
+        <Segmented
+          ariaLabel="max margin basis"
+          value={capital.maxMargin.basis}
+          onChange={(v) => setMM({ basis: v as MarginBasis })}
+          options={[
+            { label: 'Wallet', value: 'wallet' },
+            { label: 'Total', value: 'total' },
+            { label: 'Free', value: 'free' }
+          ]}
+        />
+        <span className="ml-2 text-zinc-400">최대 투자 한도</span>
+        <input
+          type="range"
+          min={0}
+          max={100}
+          step={0.01}
+          value={capital.maxMargin.percentage}
+          onChange={(e) => setMM({ percentage: Math.max(0, Math.min(100, Number(e.currentTarget.value) || 0)) })}
+          className="h-1 w-40 cursor-pointer"
+          aria-label="max margin percent slider"
+        />
+        <input
+          type="number"
+          min={0}
+          max={100}
+          step={0.01}
+          value={capital.maxMargin.percentage}
+          onChange={(e) => setMM({ percentage: Math.max(0, Math.min(100, Number(e.currentTarget.value) || 0)) })}
+          className="w-20 rounded border border-zinc-700 bg-zinc-900 px-2 py-1"
+          aria-label="max margin percent input"
+        />
+        <span className="text-zinc-500">% · 한도 {fmt(basisAmount(capital.maxMargin.basis, false) * (capital.maxMargin.percentage / 100))} {quote}</span>
+        <label className="ml-3 flex items-center gap-2 text-zinc-400">
+          <input
+            type="checkbox"
+            className="h-4 w-4"
+            checked={autoRescale}
+            onChange={(e) => { setAutoRescale(e.target.checked); onChange({ ...(capital as any), autoRescale: e.target.checked } as any); }}
+          />
+          <span>한도 초과 시 자동 보정</span>
+        </label>
+        <label className="flex items-center gap-2 text-zinc-400">
+          <input
+            type="checkbox"
+            className="h-4 w-4"
+            checked={preserveRatio}
+            onChange={(e) => { setPreserveRatio(e.target.checked); onChange({ ...(capital as any), preserveRatio: e.target.checked } as any); }}
+          />
+          <span>비중 유지</span>
+        </label>
+        <button
+          type="button"
+          className="rounded border border-emerald-600 px-2 py-1 text-emerald-300"
+          onClick={() => {
+            const count = Math.max(1, symbolCount || 1);
+            const baseTotal = basisAmount(capital.maxMargin.basis, false);
+            const maxBudget = (baseTotal * capital.maxMargin.percentage) / 100;
+            let newInitialTotal = initialTotal;
+            let newScaleTotal = scaleTotal;
+            const used = newInitialTotal + newScaleTotal;
+            if (used > maxBudget) {
+              if (preserveRatio && used > 0) {
+                const k = maxBudget / used;
+                newInitialTotal = newInitialTotal * k;
+                newScaleTotal = newScaleTotal * k;
+              } else {
+                const delta = used - maxBudget;
+                const reduceScale = Math.min(newScaleTotal, delta);
+                newScaleTotal -= reduceScale;
+                const remaining = delta - reduceScale;
+                if (remaining > 0) newInitialTotal = Math.max(0, newInitialTotal - remaining);
+              }
+            }
+
+            const clampPct = (v: number) => Math.max(0, Math.min(100, Number.isFinite(v) ? v : 0));
+            const round2 = (v: number) => Math.round(v * 100) / 100;
+
+            // Derive new initial fields
+            const im = { ...capital.initialMargin } as any;
+            if (im.mode === 'usdt_amount') im.usdtAmount = round2(newInitialTotal);
+            else if (im.mode === 'min_notional') im.minNotional = round2(newInitialTotal / count);
+            else if (im.mode === 'per_symbol_percentage') {
+              const perBase = basisAmount(im.basis ?? capital.maxMargin.basis, true);
+              im.percentage = clampPct((newInitialTotal / count / Math.max(1e-9, perBase)) * 100);
+            } else if (im.mode === 'all_symbols_percentage') {
+              const totBase = basisAmount(im.basis ?? capital.maxMargin.basis, false);
+              im.percentage = clampPct((newInitialTotal / Math.max(1e-9, totBase)) * 100);
+            }
+
+            // Derive new scale fields
+            const sb = { ...capital.scaleInBudget } as any;
+            if (sb.mode === 'usdt_amount') sb.usdtAmount = round2(newScaleTotal);
+            else if (sb.mode === 'min_notional') sb.minNotional = round2(newScaleTotal / count);
+            else if (sb.mode === 'per_symbol_percentage') {
+              const perBase = basisAmount(sb.basis ?? capital.maxMargin.basis, true);
+              sb.percentage = clampPct((newScaleTotal / count / Math.max(1e-9, perBase)) * 100);
+            } else if (sb.mode === 'balance_percentage') {
+              const totBase = basisAmount(sb.basis ?? capital.maxMargin.basis, false);
+              sb.percentage = clampPct((newScaleTotal / Math.max(1e-9, totBase)) * 100);
+            }
+
+            onChange({ ...(capital as any), initialMargin: im, scaleInBudget: sb } as any);
+          }}
+        >
+          한도에 맞추기
+        </button>
+        <div className="ml-2 inline-flex items-center gap-1">
+          <span className="text-zinc-500 text-[11px]">분배 템플릿:</span>
+          {(
+            [
+              { label: '50/50', i: 0.5, s: 0.5 },
+              { label: '70/30', i: 0.7, s: 0.3 },
+              { label: '100/0', i: 1.0, s: 0.0 }
+            ] as Array<{ label: string; i: number; s: number }>
+          ).map((tpl) => (
+            <button
+              key={`tpl-${tpl.label}`}
+              type="button"
+              className="rounded border border-zinc-700 px-2 py-0.5 text-[11px] text-zinc-300 hover:border-emerald-600/60 hover:text-emerald-200"
+              onClick={() => {
+                const count = Math.max(1, symbolCount || 1);
+                const baseTotal = basisAmount(capital.maxMargin.basis, false);
+                const maxBudget = (baseTotal * capital.maxMargin.percentage) / 100;
+                const newInitialTotal = maxBudget * tpl.i;
+                const newScaleTotal = maxBudget * tpl.s;
+
+                const clampPct = (v: number) => Math.max(0, Math.min(100, Number.isFinite(v) ? v : 0));
+                const round2 = (v: number) => Math.round(v * 100) / 100;
+
+                const im = { ...capital.initialMargin } as any;
+                if (im.mode === 'usdt_amount') im.usdtAmount = round2(newInitialTotal);
+                else if (im.mode === 'min_notional') im.minNotional = round2(newInitialTotal / count);
+                else if (im.mode === 'per_symbol_percentage') {
+                  const perBase = basisAmount(im.basis ?? capital.maxMargin.basis, true);
+                  im.percentage = clampPct((newInitialTotal / count / Math.max(1e-9, perBase)) * 100);
+                } else if (im.mode === 'all_symbols_percentage') {
+                  const totBase = basisAmount(im.basis ?? capital.maxMargin.basis, false);
+                  im.percentage = clampPct((newInitialTotal / Math.max(1e-9, totBase)) * 100);
+                }
+
+                const sb = { ...capital.scaleInBudget } as any;
+                if (sb.mode === 'usdt_amount') sb.usdtAmount = round2(newScaleTotal);
+                else if (sb.mode === 'min_notional') sb.minNotional = round2(newScaleTotal / count);
+                else if (sb.mode === 'per_symbol_percentage') {
+                  const perBase = basisAmount(sb.basis ?? capital.maxMargin.basis, true);
+                  sb.percentage = clampPct((newScaleTotal / count / Math.max(1e-9, perBase)) * 100);
+                } else if (sb.mode === 'balance_percentage') {
+                  const totBase = basisAmount(sb.basis ?? capital.maxMargin.basis, false);
+                  sb.percentage = clampPct((newScaleTotal / Math.max(1e-9, totBase)) * 100);
+                }
+
+                onChange({ ...(capital as any), initialMargin: im, scaleInBudget: sb } as any);
+              }}
+            >
+              {tpl.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Allocation bar */}
+      <div className="mt-1 flex items-center gap-2">
+        <div className="h-3 w-full overflow-hidden rounded border border-zinc-700">
+          <div className="flex h-full w-full">
+            <button
+              type="button"
+              onClick={() => document.getElementById('initial-settings')?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
+              className="h-full bg-emerald-600/60"
+              style={{ width: `${iNorm}%` }}
+              title={`초기 ${fmt(initialTotal)} · ${fmtPct(initialPct)}`}
+            />
+            <button
+              type="button"
+              onClick={() => document.getElementById('scale-settings')?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
+              className="h-full bg-sky-600/60"
+              style={{ width: `${sNorm}%` }}
+              title={`추매 ${fmt(scaleTotal)} · ${fmtPct(scalePct)}`}
+            />
+            <div className="h-full bg-zinc-600/40" style={{ width: `${lNorm}%` }} title={`여유 ${fmtPct(leftoverPct)}`} />
+          </div>
+        </div>
+        <span className="text-[11px] text-zinc-400">최대 {fmtPct(maxPct)}</span>
+        <span className="text-[11px] text-zinc-400 whitespace-nowrap">초기 {fmt(initialTotal)}</span>
+        <span className="text-[11px] text-zinc-400 whitespace-nowrap">추매 {fmt(scaleTotal)}</span>
+      </div>
+
+      {/* Per-symbol cards */}
+      <div className="grid gap-3 md:grid-cols-2">
+        <div className="rounded border border-zinc-800 bg-zinc-950/60 p-2">
+          <div className="text-[11px] text-zinc-400">초기</div>
+          <div className="mt-1 text-sm text-zinc-200">종목당 {fmt(initialPerSymbol)} · 총 {fmt(initialTotal)} {capital.initialMargin.asset ?? 'USDT'}</div>
+        </div>
+        <div className="rounded border border-zinc-800 bg-zinc-950/60 p-2">
+          <div className="text-[11px] text-zinc-400">추매</div>
+          <div className="mt-1 text-sm text-zinc-200">종목당 {fmt(scalePerSymbol)} · 총 {fmt(scaleTotal)} {capital.scaleInBudget.asset ?? 'USDT'}</div>
+        </div>
+      </div>
+
+      <div id="scale-settings" className="rounded border border-zinc-800 bg-zinc-950/60 p-3">
         <div className="mb-1 font-medium text-zinc-100">추가 매수 금액 설정</div>
         <div className="grid gap-2 md:grid-cols-2">
           <div className="space-y-2">
-            <label className="flex items-center gap-2"><input type="radio" name="sib-mode" checked={capital.scaleInBudget.mode==='usdt_amount'} onChange={() => setSIB({ mode: 'usdt_amount' })} /> 직접 입력</label>
+            <Segmented
+              ariaLabel="scale-in budget mode"
+              value={capital.scaleInBudget.mode}
+              onChange={(v) => setSIB({ mode: v as any })}
+              options={[
+                { label: '직접 입력', value: 'usdt_amount' },
+                { label: '잔고 비율', value: 'balance_percentage' },
+                { label: '종목당 비율', value: 'per_symbol_percentage' },
+                { label: '현재 매수기준%', value: 'position_percent' },
+                { label: '최소 주문', value: 'min_notional' }
+              ]}
+            />
             {capital.scaleInBudget.mode==='usdt_amount' ? (
               <div className="flex items-center gap-2 pl-5">
                 <select className="rounded border border-zinc-700 bg-zinc-900 px-1 py-0.5" value={capital.scaleInBudget.asset ?? 'USDT'} onChange={(e) => setSIB({ asset: e.target.value as any })}>
@@ -170,8 +727,43 @@ export function CapitalSettingsPanel({ capital, symbolCount, onChange }: { capit
                 <span className="text-zinc-500">예상 {fmt(expectedFrom(capital.scaleInBudget.basis, true, capital.scaleInBudget.percentage, balances, capital.estimatedBalance, symbolCount))}</span>
               </div>
             ) : null}
+            {capital.scaleInBudget.mode==='position_percent' ? (
+              <div className="flex items-center gap-2 pl-5">
+                <span className="text-zinc-400">현재 매수 기준</span>
+                <input type="number" min={1} max={2000} step={1} className="w-24 rounded border border-zinc-700 bg-zinc-900 px-2 py-1"
+                  value={capital.scaleInBudget.percentage}
+                  onChange={(e) => setSIB({ percentage: Math.max(1, Math.min(2000, Math.round(Number(e.currentTarget.value) || 0))) })}
+                />
+                <span className="text-zinc-500">%</span>
+                <span className="text-zinc-500">(초기 매수 총액의 비율로 산정)</span>
+              </div>
+            ) : null}
 
             <label className="flex items-center gap-2"><input type="radio" name="sib-mode" checked={capital.scaleInBudget.mode==='min_notional'} onChange={() => setSIB({ mode: 'min_notional' })} /> 최소 주문 단위 사용</label>
+            {capital.scaleInBudget.mode==='min_notional' ? (
+              <div className="pl-5 text-zinc-500">
+                심볼별 최소 주문 금액을 사용합니다.
+                {minNotionalHint != null ? (
+                  <>
+                    <span className="ml-2 text-zinc-400">추천 {fmt(minNotionalHint)}</span>
+                    <button
+                      type="button"
+                      className="ml-2 rounded border border-zinc-700 px-2 py-0.5 text-[11px] text-zinc-300 hover:border-emerald-600/60 hover:text-emerald-200"
+                      onClick={() => setSIB({ minNotional: Number(minNotionalHint) || 0 })}
+                    >
+                      적용
+                    </button>
+                    <button
+                      type="button"
+                      className="ml-2 rounded border border-zinc-700 px-2 py-0.5 text-[11px] text-zinc-300 hover:border-emerald-600/60 hover:text-emerald-200"
+                      onClick={() => setShowScaleMinModal(true)}
+                    >
+                      예상주문금액 확인
+                    </button>
+                  </>
+                ) : null}
+              </div>
+            ) : null}
           </div>
         </div>
       </div>
@@ -245,6 +837,36 @@ export function CapitalSettingsPanel({ capital, symbolCount, onChange }: { capit
       </div>
 
       <div className="rounded border border-zinc-800 bg-zinc-950/60 p-3">
+        <div className="mb-1 font-medium text-zinc-100">매수 예외 조건</div>
+        <div className="space-y-2 text-[12px]">
+          <label className="flex items-center gap-2">
+            <input type="checkbox" className="h-4 w-4" checked={Boolean((capital as any).exceptions?.totalVsWalletEnabled)} onChange={(e) => onChange({ ...(capital as any), exceptions: { ...((capital as any).exceptions ?? {}), totalVsWalletEnabled: e.target.checked } as any })} />
+            <span>Total 잔고가 Wallet 보다</span>
+            <input type="number" min={1} max={100} className="w-16 rounded border border-zinc-700 bg-zinc-900 px-2 py-1" value={Number((capital as any).exceptions?.totalVsWalletPct ?? 50)} onChange={(e) => onChange({ ...(capital as any), exceptions: { ...((capital as any).exceptions ?? {}), totalVsWalletPct: Math.max(1, Math.min(100, Math.round(Number(e.currentTarget.value) || 0))) } as any })} />
+            <span>% 이하</span>
+          </label>
+          <label className="flex items-center gap-2">
+            <input type="checkbox" className="h-4 w-4" checked={Boolean((capital as any).exceptions?.freeVsWalletEnabled)} onChange={(e) => onChange({ ...(capital as any), exceptions: { ...((capital as any).exceptions ?? {}), freeVsWalletEnabled: e.target.checked } as any })} />
+            <span>Free 잔고가 Wallet 보다</span>
+            <input type="number" min={1} max={100} className="w-16 rounded border border-zinc-700 bg-zinc-900 px-2 py-1" value={Number((capital as any).exceptions?.freeVsWalletPct ?? 50)} onChange={(e) => onChange({ ...(capital as any), exceptions: { ...((capital as any).exceptions ?? {}), freeVsWalletPct: Math.max(1, Math.min(100, Math.round(Number(e.currentTarget.value) || 0))) } as any })} />
+            <span>% 이하</span>
+          </label>
+          <label className="flex items-center gap-2">
+            <input type="checkbox" className="h-4 w-4" checked={Boolean((capital as any).exceptions?.totalBelowEnabled)} onChange={(e) => onChange({ ...(capital as any), exceptions: { ...((capital as any).exceptions ?? {}), totalBelowEnabled: e.target.checked } as any })} />
+            <span>Total 잔고</span>
+            <input type="number" min={0} className="w-24 rounded border border-zinc-700 bg-zinc-900 px-2 py-1" value={Number((capital as any).exceptions?.totalBelowAmount ?? 0)} onChange={(e) => onChange({ ...(capital as any), exceptions: { ...((capital as any).exceptions ?? {}), totalBelowAmount: Math.max(0, Number(e.currentTarget.value) || 0) } as any })} />
+            <span>{quote} 이하</span>
+          </label>
+          <label className="flex items-center gap-2">
+            <input type="checkbox" className="h-4 w-4" checked={Boolean((capital as any).exceptions?.freeBelowEnabled)} onChange={(e) => onChange({ ...(capital as any), exceptions: { ...((capital as any).exceptions ?? {}), freeBelowEnabled: e.target.checked } as any })} />
+            <span>Free 잔고</span>
+            <input type="number" min={0} className="w-24 rounded border border-zinc-700 bg-zinc-900 px-2 py-1" value={Number((capital as any).exceptions?.freeBelowAmount ?? 0)} onChange={(e) => onChange({ ...(capital as any), exceptions: { ...((capital as any).exceptions ?? {}), freeBelowAmount: Math.max(0, Number(e.currentTarget.value) || 0) } as any })} />
+            <span>{quote} 이하</span>
+          </label>
+        </div>
+      </div>
+
+      <div className="rounded border border-zinc-800 bg-zinc-950/60 p-3">
         <div className="mb-1 font-medium text-zinc-100">양방향(헤지) 금액 설정</div>
         <label className="mb-2 flex items-center gap-2">
           <input type="checkbox" className="h-4 w-4" checked={Boolean(capital.hedgeBudget?.separateByDirection)} onChange={(e) => onChange({ ...capital, hedgeBudget: { ...(capital.hedgeBudget ?? ({} as any)), separateByDirection: e.target.checked, long: capital.hedgeBudget?.long ?? { mode: 'position_percent', percentage: 100 }, short: capital.hedgeBudget?.short ?? { mode: 'position_percent', percentage: 100 } } })} />
@@ -305,6 +927,78 @@ export function CapitalSettingsPanel({ capital, symbolCount, onChange }: { capit
           })}
         </div>
       </div>
+
+      {/* Min notional preview modals */}
+      <HelpModal open={showInitialMinModal} title="최초 매수 · 최소 주문 예상" onClose={() => setShowInitialMinModal(false)}>
+        {renderMinNotionalTable('initial')}
+      </HelpModal>
+      <HelpModal open={showScaleMinModal} title="추가 매수 · 최소 주문 예상" onClose={() => setShowScaleMinModal(false)}>
+        {renderMinNotionalTable('scale')}
+      </HelpModal>
+      <HelpModal open={showBalancePickModal} title="잔고 조회 결과 적용" onClose={() => setShowBalancePickModal(false)}>
+        <div className="space-y-2 text-sm">
+          <p className="text-zinc-400">잔고 조회 결과를 예상 금액 계산에 사용할지, 입력값을 유지할지 선택하세요.</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              className="rounded border border-zinc-700 px-2 py-0.5 text-zinc-300 hover:border-emerald-600/60 hover:text-emerald-200"
+              onClick={() => { setCalcBasis('estimated'); setShowBalancePickModal(false); }}
+            >
+              입력값 유지(계산 기준)
+            </button>
+            <button
+              type="button"
+              className="rounded border border-zinc-700 px-2 py-0.5 text-zinc-300 hover:border-emerald-600/60 hover:text-emerald-200"
+              onClick={() => { setCalcBasis('wallet'); setShowBalancePickModal(false); }}
+            >
+              Wallet 사용(계산 기준)
+            </button>
+            <button
+              type="button"
+              className="rounded border border-zinc-700 px-2 py-0.5 text-zinc-300 hover:border-emerald-600/60 hover:text-emerald-200"
+              onClick={() => { setCalcBasis('total'); setShowBalancePickModal(false); }}
+            >
+              Total 사용(계산 기준)
+            </button>
+            <button
+              type="button"
+              className="rounded border border-zinc-700 px-2 py-0.5 text-zinc-300 hover:border-emerald-600/60 hover:text-emerald-200"
+              onClick={() => { setCalcBasis('free'); setShowBalancePickModal(false); }}
+            >
+              Free 사용(계산 기준)
+            </button>
+          </div>
+          <div className="mt-2 text-[12px] text-zinc-400">
+            <div>입력값: {fmt(capital.estimatedBalance)} {quote}</div>
+            <div>Wallet: {fmt(fetchedBalances?.wallet ?? balances.wallet)} {quote}</div>
+            <div>Total: {fmt(fetchedBalances?.total ?? balances.total)} {quote}</div>
+            <div>Free: {fmt(fetchedBalances?.free ?? balances.free)} {quote}</div>
+          </div>
+          <div className="mt-2 flex items-center gap-2">
+            <button
+              type="button"
+              className="rounded border border-emerald-600 px-2 py-0.5 text-emerald-300"
+              onClick={() => { const v = Number(fetchedBalances?.wallet ?? NaN); if (Number.isFinite(v)) set({ estimatedBalance: v }); setShowBalancePickModal(false); }}
+            >
+              입력값을 Wallet로 설정
+            </button>
+            <button
+              type="button"
+              className="rounded border border-emerald-600 px-2 py-0.5 text-emerald-300"
+              onClick={() => { const v = Number(fetchedBalances?.total ?? NaN); if (Number.isFinite(v)) set({ estimatedBalance: v }); setShowBalancePickModal(false); }}
+            >
+              입력값을 Total로 설정
+            </button>
+            <button
+              type="button"
+              className="rounded border border-emerald-600 px-2 py-0.5 text-emerald-300"
+              onClick={() => { const v = Number(fetchedBalances?.free ?? NaN); if (Number.isFinite(v)) set({ estimatedBalance: v }); setShowBalancePickModal(false); }}
+            >
+              입력값을 Free로 설정
+            </button>
+          </div>
+        </div>
+      </HelpModal>
     </div>
   );
 }
@@ -319,6 +1013,12 @@ function fmt(n?: number) {
   if (!Number.isFinite(n as number)) return '-';
   const v = Number(n);
   return v >= 1000 ? v.toLocaleString(undefined, { maximumFractionDigits: 2 }) : v.toFixed(2);
+}
+
+function fmtPct(n?: number) {
+  if (!Number.isFinite(n as number)) return '0%';
+  const v = Math.max(0, Math.min(100, Number(n)));
+  return `${v.toFixed(2)}%`;
 }
 
 function expectedFrom(basis: MarginBasis, perSymbol: boolean, percentage: number, balances: { wallet?: number; total?: number; free?: number }, estimated: number, symbolCount: number) {

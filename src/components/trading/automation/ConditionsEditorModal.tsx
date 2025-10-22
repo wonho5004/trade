@@ -148,15 +148,17 @@ export function ConditionsEditorModal({
   const [selectedKey, setSelectedKey] = useState<IndicatorKey | null>(null);
   const [selectedStatus, setSelectedStatus] = useState<StatusMetric | null>(null);
 
-  // 의도적으로 open 변경에만 반응하여 편집 중 타이틀/모드가 리셋되지 않도록 함
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // open이 false -> true 전이될 때만 초기화하며, 의존성은 모두 선언해 경고 제거
+  const prevOpenRef = useRef(open);
   useEffect(() => {
-    if (open) {
+    const justOpened = open && !prevOpenRef.current;
+    prevOpenRef.current = open;
+    if (justOpened) {
       setLocal(value);
       setMode(initialMode);
       setCurrentTitle(initialTitle ?? title);
     }
-  }, [open]);
+  }, [open, value, initialMode, initialTitle, title]);
 
   // 부모 value가 열려있는 동안 외부에서 갱신될 때(예: 그룹 편집 상단의 ‘지표 추가’), 본문에 즉시 반영
   useEffect(() => {
@@ -172,12 +174,15 @@ export function ConditionsEditorModal({
   const pendingAddRef = useRef<IndicatorKey | null>(null);
   const lastAppendRef = useRef<{ key: IndicatorKey; at: number } | null>(null);
 
-  const commit = (next: IndicatorConditions) => {
-    setHistory((prev) => (prev.length >= 20 ? [...prev.slice(1), local] : [...prev, local]));
-    setRedo([]);
-    setLocal(next);
-    onChange(next);
-  };
+  const commit = useMemo(() => {
+    return (next: IndicatorConditions) => {
+      setHistory((prev) => (prev.length >= 20 ? [...prev.slice(1), local] : [...prev, local]));
+      setRedo([]);
+      setLocal(next);
+      onChange(next);
+    };
+  // local and onChange are intentionally captured; re-created when they change
+  }, [local, onChange]);
 
   const canUndo = history.length > 0;
   const canRedo = redo.length > 0;
@@ -196,7 +201,7 @@ export function ConditionsEditorModal({
     show({ title: '지표 추가됨', description: INDICATOR_LABELS[key], type: 'success' });
     lastAppendRef.current = { key, at: now };
     // after switching to edit, keep focus on newly edited list; nothing else
-  }, [mode, open]);
+  }, [mode, open, local, commit, show]);
   useEffect(() => {
     const onSwitch = () => setMode('edit');
     window.addEventListener('switch-to-edit', onSwitch);

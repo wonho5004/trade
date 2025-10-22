@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { useFormState, useFormStatus } from 'react-dom';
+import { useActionState } from 'react';
+import { useFormStatus } from 'react-dom';
 
 import { defaultOpsActionState, type OpsActionState } from '@/app/ops/form-state';
 import { assignUserRoleAction, bootstrapAdminAccountAction, deleteUserAction } from '@/app/ops/actions';
@@ -53,9 +54,9 @@ export function UserRoleManager({
   profiles: UserSummary[];
   logsByUserId: Record<string, AuditLogEntry[]>;
 }) {
-  const [roleState, roleAction] = useFormState(assignUserRoleAction, defaultOpsActionState);
-  const [bootstrapState, bootstrapAction] = useFormState(bootstrapAdminAccountAction, defaultOpsActionState);
-  const [deleteState, deleteAction] = useFormState(deleteUserAction, defaultOpsActionState);
+  const [roleState, roleAction] = useActionState(assignUserRoleAction, defaultOpsActionState);
+  const [bootstrapState, bootstrapAction] = useActionState(bootstrapAdminAccountAction, defaultOpsActionState);
+  const [deleteState, deleteAction] = useActionState(deleteUserAction, defaultOpsActionState);
 
   const [search, setSearch] = useState('');
   const [selectedUserId, setSelectedUserId] = useState<string | null>(profiles[0]?.id ?? null);

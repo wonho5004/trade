@@ -254,7 +254,7 @@ export const calculateScaleInBudget = ({
       margin = totalMargin / count;
       limitedBy = 'balance';
     }
-  } else if (mode === 'margin_percentage') {
+  } else if (mode === 'per_symbol_percentage') {
     const base = sanitizePositiveNumber(baseMargin);
     if (base != null && cappedPercentage != null) {
       margin = (base * cappedPercentage) / 100;

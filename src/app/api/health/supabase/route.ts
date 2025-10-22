@@ -16,7 +16,7 @@ export async function GET() {
   try {
     const svc = createSupabaseServerClient('service');
     const { count, error: countError } = await svc.from('profiles').select('*', { count: 'exact', head: true });
-    const { token } = readAuthCookies();
+    const { token } = await readAuthCookies();
     const { data: userData, error: userError } = token ? await svc.auth.getUser(token) : { data: null, error: null } as any;
     return NextResponse.json({
       ok: true,
