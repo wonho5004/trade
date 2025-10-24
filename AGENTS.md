@@ -1,10 +1,10 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-- Next.js routes live in `src/app/<feature>`; APIs in `src/app/api`.
+- Next.js routes in `src/app/<feature>`; APIs in `src/app/api`.
 - Shared UI in `src/components/{chart,trading,ui,common}`; domain logic in `src/lib/{trading,analysis,chart}`.
 - State in `src/stores`; cross‑cutting types in `src/types`; fixtures/helpers in `src/test-utils`.
-- Python mirrors TS layout: `python/analysis`, `python/backtesting`, `python/indicators`.
+- Python mirrors TS layout in `python/{analysis,backtesting,indicators}`.
 - Public assets in `public/`. Co‑locate tests beside features.
 
 ## Build, Test, and Development Commands
@@ -13,18 +13,19 @@
 - `npm run build && npm run start` — build, then run a smoke test.
 - `npm run lint` — run ESLint/Prettier; fix all warnings before merging.
 - `npm run test [--watch]` — run Jest + React Testing Library.
-- `python python/analysis/main.py` — run analytics/backtests (document new entrypoints in `docs/`).
+- `python python/analysis/main.py` — run analytics/backtests; document new entrypoints in `docs/`.
 
 ## Coding Style & Naming Conventions
 - TypeScript is strict; prefer immutable patterns and explicit return types.
 - Formatting: 2‑space indent, single quotes, trailing commas; follow repo ESLint/Prettier.
-- Naming: Components in PascalCase; hooks start with `use`; Zustand stores end with `Store`.
+- Naming: components in PascalCase; hooks start with `use`; Zustand stores end with `Store`.
 - Extract recurring Tailwind clusters into helpers; keep shadcn/ui variants with components.
 
 ## Testing Guidelines
-- Co‑locate `*.test.ts(x)` with features; favor behavioral checks via RTL.
-- Mock Binance integrations using `src/test-utils` fixtures.
+- Write `*.test.ts(x)` beside the feature under test; prefer behavioral checks via RTL.
+- Mock Binance integrations with fixtures in `src/test-utils`.
 - Target ≥80% coverage on new code; annotate intentional gaps with TODOs linking issues.
+- Run tests with `npm run test` (use `--watch` during development).
 
 ## Commit & Pull Request Guidelines
 - Use Conventional Commits (e.g., `feat: add order book panel`, `fix: correct supabase config`).

@@ -150,7 +150,7 @@ describe('calculateScaleInBudget', () => {
 
   it('caps margin percentage at configured upper bound', () => {
     const result = calculateScaleInBudget({
-      mode: 'margin_percentage',
+      mode: 'per_symbol_percentage',
       percentage: SCALE_IN_BUDGET_PERCENT_CAP * 2,
       leverage: 50,
       baseMargin: 150,

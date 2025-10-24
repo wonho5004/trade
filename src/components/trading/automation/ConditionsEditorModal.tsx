@@ -140,7 +140,7 @@ export function ConditionsEditorModal({
   };
 }) {
   const [local, setLocal] = useState<IndicatorConditions>(() => value);
-  const [mode, setMode] = useState<'select' | 'edit'>('select');
+  const [mode, setMode] = useState<'select' | 'edit'>(initialMode);
   const [currentTitle, setCurrentTitle] = useState(title);
   const { show } = useOptionalToast();
   const [history, setHistory] = useState<IndicatorConditions[]>([]);
@@ -159,6 +159,14 @@ export function ConditionsEditorModal({
       setCurrentTitle(initialTitle ?? title);
     }
   }, [open, value, initialMode, initialTitle, title]);
+
+  // 임베디드 모드에서는 열림 전환 없이도 즉시 초기 모드 적용
+  useEffect(() => {
+    if (embedded) {
+      setMode(initialMode);
+      setCurrentTitle(initialTitle ?? title);
+    }
+  }, [embedded, initialMode, initialTitle, title]);
 
   // 부모 value가 열려있는 동안 외부에서 갱신될 때(예: 그룹 편집 상단의 ‘지표 추가’), 본문에 즉시 반영
   useEffect(() => {

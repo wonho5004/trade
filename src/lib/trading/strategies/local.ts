@@ -42,3 +42,13 @@ export function removeLocalStrategyName(name: string) {
   writeNames(names);
 }
 
+export function renameLocalStrategyName(prev: string, nextName: string) {
+  const from = prev.trim();
+  const to = nextName.trim();
+  if (!from || !to || from === to) return;
+  const names = readNames();
+  const idx = names.indexOf(from);
+  if (idx === -1) return;
+  names[idx] = to;
+  writeNames(Array.from(new Set(names)));
+}

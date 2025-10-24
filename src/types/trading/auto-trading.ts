@@ -273,6 +273,12 @@ export type ScaleInLimit = {
     comparator: ComparisonOperator;
     value: number;
   };
+  /** 직접 입력 한도(정액) */
+  notional?: {
+    enabled: boolean;
+    asset: 'USDT' | 'USDC';
+    amount: number;
+  };
   profitRate: ProfitCondition;
   unlimited: boolean;
 };

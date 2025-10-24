@@ -17,7 +17,8 @@ import { LogicSummary } from './LogicSummary';
 import { FooterActions } from './FooterActions';
 import { StrategyManagerPanel } from './StrategyManagerPanel';
 import { normalizeSymbol, uniqueAppend, removeSymbol } from '@/lib/trading/symbols';
-import { isNameTaken, upsertLocalStrategyName, listLocalStrategyNames, removeLocalStrategyName } from '@/lib/trading/strategies/local';
+import { isNameTaken } from '@/lib/trading/strategies/local';
+import { LogicNameManagerModal } from './LogicNameManagerModal';
 import { GroupListPanel } from './GroupListPanel';
 import { ConditionsPreview } from './ConditionsPreview';
 import { PreviewLauncher } from './PreviewLauncher';
@@ -536,10 +537,9 @@ export function AutoTradingSettingsForm() {
 
   const logicNameRef = useRef<HTMLInputElement | null>(null);
   const leverageRef = useRef<HTMLInputElement | null>(null);
-  const [nameStatus, setNameStatus] = useState<{ checked: boolean; available: boolean } | null>(null);
+  const [showNameModal, setShowNameModal] = useState(false);
   const [errors, setErrors] = useState({ basic: { logicName: false, leverage: false } });
   const [symbolsErrors, setSymbolsErrors] = useState<{ manualSymbols?: string; excludedSymbols?: string; leverageOverrides?: string }>({});
-  const [savedNames, setSavedNames] = useState<string[]>(() => listLocalStrategyNames());
   const handleSaveBasic = async () => {
     setErrors({ basic: { logicName: false, leverage: false } });
     if (!draft.logicName.trim()) {
@@ -554,15 +554,9 @@ export function AutoTradingSettingsForm() {
     }
     const taken = isNameTaken(draft.logicName);
     const sameAsCurrent = draft.logicName.trim() === settings.logicName.trim();
-    // 동일 이름으로 수정 저장은 허용, 다른 항목만 바꾸는 케이스가 막히지 않도록
-    setNameStatus({ checked: true, available: !taken || sameAsCurrent });
     if (taken && !sameAsCurrent) {
       logicNameRef.current?.focus();
       throw new Error('이미 사용 중인 이름입니다. 기존 이름으로 수정 저장은 가능합니다.');
-    }
-    // 동일 이름 수정 시에는 목록 중복 추가 방지
-    if (!sameAsCurrent) {
-      upsertLocalStrategyName(draft.logicName);
     }
     const prev = {
       logicName: settings.logicName,
@@ -765,7 +759,7 @@ export function AutoTradingSettingsForm() {
   return (
     <div className="flex flex-col gap-5">
       {/* Symbols section */}
-      <div className="order-3">
+      <div className="order-2">
         <SectionFrame
           sectionKey="symbols"
           title="종목 선택 / 제외 & 레버리지"
@@ -801,7 +795,35 @@ export function AutoTradingSettingsForm() {
             <SymbolsPickerPanel
               quote={symbolsQuote}
               symbolCount={draft.symbolCount}
-              onChangeQuote={(q) => setSymbolsQuote(q)}
+              onChangeQuote={(q) => {
+                setSymbolsQuote(q);
+                // 쿼트 변경 시, 기존 선택/제외/오버라이드/기능 키를 모두 새 쿼트로 정규화하여 혼용 방지
+                setDraft((d) => {
+                  const normList = (list: string[]) => list.map((s) => normalizeSymbol(s, q)).filter(Boolean);
+                  const normMap = (m: Record<string, any>) => {
+                    const next: Record<string, any> = {};
+                    Object.entries(m || {}).forEach(([k, v]) => {
+                      const nk = normalizeSymbol(String(k), q);
+                      if (nk) next[nk] = v;
+                    });
+                    return next;
+                  };
+                  return {
+                    ...d,
+                    symbolSelection: {
+                      ...d.symbolSelection,
+                      manualSymbols: normList(d.symbolSelection.manualSymbols),
+                      excludedSymbols: normList(d.symbolSelection.excludedSymbols),
+                      excludedReasons: Object.fromEntries(
+                        Object.entries(d.symbolSelection.excludedReasons || {}).map(([k, v]) => [normalizeSymbol(k, q), v]).filter(([k]) => Boolean(k))
+                      ) as any,
+                      leverageOverrides: normMap(d.symbolSelection.leverageOverrides as any),
+                      positionOverrides: normMap(d.symbolSelection.positionOverrides as any),
+                      featureOverrides: normMap((d.symbolSelection as any).featureOverrides || {})
+                    }
+                  } as Draft;
+                });
+              }}
               manual={draft.symbolSelection.manualSymbols}
               excluded={draft.symbolSelection.excludedSymbols}
               excludedReasons={draft.symbolSelection.excludedReasons ?? {}}
@@ -1915,38 +1937,26 @@ export function AutoTradingSettingsForm() {
         >
           <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 text-xs text-zinc-300">
             <label className="flex items-center gap-2">
-              <span className="w-20 text-zinc-400 inline-flex items-center gap-1">로직명 <InfoTip title="전략을 식별하기 위한 이름" /></span>
+              <span className="w-24 whitespace-nowrap text-zinc-400 inline-flex items-center gap-1">로직명 <InfoTip title="전략을 식별하기 위한 이름" /></span>
               <div className="flex min-w-0 flex-1 items-center gap-2">
                 <input
                   type="text"
                   value={draft.logicName}
                   onChange={(e) => setDraft((d) => ({ ...d, logicName: e.target.value }))}
                   onBlur={() => {
-                    const name = draft.logicName.trim();
-                    if (!name) return;
-                    const available = !isNameTaken(name);
-                    setNameStatus({ checked: true, available });
+                    /* noop: 중복확인은 모달에서 처리 */
                   }}
                   ref={logicNameRef}
                   className={`flex-1 rounded border bg-zinc-900 px-2 py-1 text-[12px] text-zinc-100 ${
                     (errors as any).basic.logicName ? 'border-rose-500/70' : 'border-zinc-700'
                   }`}
                 />
-                <button
-                  type="button"
-                  onClick={() => {
-                    const available = !isNameTaken(draft.logicName.trim());
-                    setNameStatus({ checked: true, available });
-                  }}
-                  className="rounded border border-zinc-700 px-2 py-1 text-[11px] text-zinc-300 hover:border-emerald-500/60 hover:text-emerald-200"
-                >
-                  중복확인
-                </button>
+                <button type="button" onClick={() => setShowNameModal(true)} className="whitespace-nowrap rounded border border-zinc-700 px-2 py-1 text-[11px] text-zinc-300">관리…</button>
               </div>
             </label>
 
             <label className="flex items-center gap-2">
-              <span className="w-20 text-zinc-400 inline-flex items-center gap-1">데이터 프레임 <InfoTip title="캔들 인터벌(예: 15m, 1h)" /></span>
+              <span className="w-24 whitespace-nowrap text-zinc-400 inline-flex items-center gap-1">데이터 프레임 <InfoTip title="캔들 인터벌(예: 15m, 1h)" /></span>
               <select
                 value={draft.timeframe}
                 onChange={(e) => setDraft((d) => ({ ...d, timeframe: e.target.value as Draft['timeframe'] }))}
@@ -1959,7 +1969,7 @@ export function AutoTradingSettingsForm() {
             </label>
 
             <label className="flex items-center gap-2">
-              <span className="w-20 text-zinc-400 inline-flex items-center gap-1">레버리지 <InfoTip title="전역 기본 레버리지(종목별 오버라이드로 대체 가능)" /></span>
+              <span className="w-24 whitespace-nowrap text-zinc-400 inline-flex items-center gap-1">레버리지 <InfoTip title="전역 기본 레버리지(종목별 오버라이드로 대체 가능)" /></span>
               <input
                 type="number"
                 min={1}
@@ -1974,7 +1984,7 @@ export function AutoTradingSettingsForm() {
             </label>
 
             <label className="flex items-center gap-2">
-              <span className="w-20 text-zinc-400 inline-flex items-center gap-1">종목 수 <InfoTip title="선택 목표 종목 개수" /></span>
+              <span className="w-24 whitespace-nowrap text-zinc-400 inline-flex items-center gap-1">종목 수 <InfoTip title="선택 목표 종목 개수" /></span>
               <input
                 type="number"
                 min={1}
@@ -1986,7 +1996,7 @@ export function AutoTradingSettingsForm() {
             </label>
 
             <label className="flex items-center gap-2">
-              <span className="w-20 text-zinc-400 inline-flex items-center gap-1">자산 모드 <InfoTip title="Single: 단일 자산, Multi: 여러 자산 간 상쇄" /></span>
+              <span className="w-24 whitespace-nowrap text-zinc-400 inline-flex items-center gap-1">자산 모드 <InfoTip title="Single: 단일 자산, Multi: 여러 자산 간 상쇄" /></span>
               <select
                 value={draft.assetMode}
                 onChange={(e) => setDraft((d) => ({ ...d, assetMode: e.target.value as Draft['assetMode'] }))}
@@ -1998,7 +2008,7 @@ export function AutoTradingSettingsForm() {
             </label>
 
             <label className="flex items-center gap-2">
-              <span className="w-20 text-zinc-400 inline-flex items-center gap-1">포지션 모드 <InfoTip title="One-Way: 단일 방향, Hedge: 롱/숏 동시 보유" /></span>
+              <span className="w-24 whitespace-nowrap text-zinc-400 inline-flex items-center gap-1">포지션 모드 <InfoTip title="One-Way: 단일 방향, Hedge: 롱/숏 동시 보유" /></span>
               <select
                 value={draft.positionMode}
                 onChange={(e) => setDraft((d) => ({ ...d, positionMode: e.target.value as Draft['positionMode'] }))}
@@ -2010,42 +2020,7 @@ export function AutoTradingSettingsForm() {
               <ServerModeBadge />
             </label>
 
-            {nameStatus?.checked ? (
-              <p className={`col-span-full text-[11px] ${nameStatus.available ? 'text-emerald-300' : 'text-rose-400'}`}>
-                {nameStatus.available ? '사용 가능한 이름입니다.' : '이미 사용 중인 이름입니다.'}
-              </p>
-            ) : null}
-
-            {savedNames.length > 0 ? (
-              <details className="col-span-full rounded border border-zinc-800 bg-zinc-950/60 p-2 open:pb-2">
-                <summary className="cursor-pointer text-[11px] text-zinc-400">이름 관리</summary>
-                <div className="mt-1">
-                  <div className="mb-1 flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setSavedNames(listLocalStrategyNames())}
-                      className="rounded border border-zinc-700 px-2 py-0.5 text-[11px] text-zinc-300"
-                    >
-                      목록 새로고침
-                    </button>
-                  </div>
-                  <ul className="space-y-1">
-                    {savedNames.map((n) => (
-                      <li key={n} className="flex items-center justify-between text-[11px] text-zinc-300">
-                        <span className="truncate">{n}</span>
-                        <button
-                          type="button"
-                          onClick={() => { removeLocalStrategyName(n); setSavedNames(listLocalStrategyNames()); }}
-                          className="rounded border border-zinc-700 px-2 py-0.5 text-rose-300"
-                        >
-                          삭제
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              </details>
-            ) : null}
+            {/* 인라인 이름 관리는 제거하고 모달로 통합 */}
 
             <p className="col-span-full text-[10px] text-zinc-500">
               교차 마진/거래소 제한 고려 · 분산/집중에 맞춘 종목 수 선택
@@ -2055,11 +2030,11 @@ export function AutoTradingSettingsForm() {
       </div>
 
       {/* Capital (투자 자금) section */}
-      <div className="order-2">
+      <div className="order-3">
       <SectionFrame
         sectionKey="capital"
         title="투자 자금 설정"
-        description="쿼트/투자금/최초·추가 매수 금액과 한도를 설정합니다."
+        description="종목 선택의 쿼트를 기준으로 투자금/최초·추가 매수 금액과 한도를 설정합니다."
         isDirty={useSectionDirtyFlag(settings.capital, draft.capital)}
         helpTitle="투자 자금 설정"
         helpContent={helpContent.capital}
@@ -2148,6 +2123,7 @@ export function AutoTradingSettingsForm() {
             symbolCount={draft.symbolCount}
             manualSymbols={draft.symbolSelection.manualSymbols}
             leverage={settings.leverage}
+            quoteFromSymbols={symbolsQuote}
             onChange={(next) => setDraft((d) => ({ ...d, capital: next as any }))}
           />
         </div>
@@ -2508,6 +2484,12 @@ export function AutoTradingSettingsForm() {
   <div className="order-12">
     <StrategyManagerPanel />
   </div>
+  <LogicNameManagerModal
+    open={showNameModal}
+    current={draft.logicName}
+    onApply={(name) => setDraft((d) => ({ ...d, logicName: name }))}
+    onClose={() => setShowNameModal(false)}
+  />
 </div>
   );
 }

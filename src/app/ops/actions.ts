@@ -7,6 +7,7 @@ import type { UserRole } from '@/lib/auth/roles';
 import { changeUserRole } from '@/lib/users/profile';
 import type { OpsActionState } from '@/app/ops/form-state';
 import { recordUserActivity } from '@/lib/logs/audit';
+import { updateProfileById } from '@/lib/users/profile';
 
 const ROLE_OPTIONS: UserRole[] = ['guest', 'member', 'admin', 'sys_admin'];
 
@@ -20,11 +21,28 @@ async function requireSystemAdmin() {
   }
 
   const supabase = createSupabaseServerClient('service');
-  const { data, error } = await supabase.auth.getUser(token);
-  if (error || !data?.user) {
+  // 1차: 토큰으로 사용자 조회
+  let actor = (await (async () => {
+    const { data, error } = await supabase.auth.getUser(token);
+    if (error || !data?.user) return null;
+    return data.user;
+  })());
+  // 2차(보강): JWT payload에서 sub 추출 후 Admin API로 조회
+  if (!actor) {
+    try {
+      const part = String(token).split('.')[1] || '';
+      const json = Buffer.from(part, 'base64').toString('utf8');
+      const payload = JSON.parse(json) as { sub?: string };
+      const userId = payload?.sub;
+      if (userId) {
+        const { data: byId } = await supabase.auth.admin.getUserById(userId);
+        actor = byId?.user ?? null;
+      }
+    } catch {}
+  }
+  if (!actor) {
     throw new Error('사용자 정보를 확인할 수 없습니다.');
   }
-  const actor = data.user;
   const { data: profile, error: profileError } = await supabase
     .from('profiles')
     .select('role')
@@ -217,5 +235,57 @@ export async function deleteUserAction(_prev: OpsActionState, formData: FormData
       status: 'error',
       message: error instanceof Error ? error.message : '알 수 없는 오류가 발생했습니다.'
     };
+  }
+}
+
+export async function updateUserProfileAction(_prev: OpsActionState, formData: FormData): Promise<OpsActionState> {
+  try {
+    const targetId = formData.get('userId');
+    if (typeof targetId !== 'string' || !targetId) {
+      return { status: 'error', message: '대상 사용자를 선택해 주세요.' };
+    }
+    const displayName = (formData.get('displayName') || '').toString().trim();
+    const nickname = (formData.get('nickname') || '').toString().trim();
+    const phone = (formData.get('phone') || '').toString().trim();
+
+    const { supabase, actor } = await requireSystemAdmin();
+
+    // 1) profiles.display_name 업데이트
+    const { error: upErr } = await updateProfileById(targetId, { display_name: displayName || null } as any);
+    if (upErr) {
+      return { status: 'error', message: upErr.message ?? '프로필 업데이트에 실패했습니다.' };
+    }
+
+    // 2) auth user_metadata 업데이트 (nickname/phone)
+    const meta: Record<string, unknown> = {};
+    if (nickname) meta.nickname = nickname;
+    else meta.nickname = null as any;
+    if (phone) meta.phone = phone;
+    else meta.phone = null as any;
+    const { error: authErr } = await supabase.auth.admin.updateUserById(targetId, { user_metadata: meta });
+    if (authErr) {
+      return { status: 'error', message: authErr.message ?? '사용자 메타데이터 갱신 실패' };
+    }
+
+    void recordUserActivity({
+      userId: targetId,
+      action: 'profile_updated',
+      detail: '사용자 정보 변경',
+      actorId: actor.id,
+      actorEmail: actor.email,
+      metadata: { displayName, nickname, phone }
+    });
+    void recordUserActivity({
+      userId: actor.id,
+      action: 'profile_update_performed',
+      detail: `${targetId} 사용자 정보 변경`,
+      actorId: actor.id,
+      actorEmail: actor.email,
+      metadata: { targetId }
+    });
+
+    return { status: 'success', message: '사용자 정보가 변경되었습니다.' };
+  } catch (error) {
+    return { status: 'error', message: error instanceof Error ? error.message : '알 수 없는 오류가 발생했습니다.' };
   }
 }

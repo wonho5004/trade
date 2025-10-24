@@ -46,10 +46,19 @@ export function GroupEditModal({
   const root = useMemo(() => conditions.root as unknown as ConditionNode, [conditions]);
   const group = useMemo(() => findGroupNode(root, groupId), [root, groupId]);
   const [addType, setAddType] = useState<'bollinger' | 'ma' | 'rsi' | 'dmi' | 'macd'>('ma');
-  const [addStatus, setAddStatus] = useState<StatusMetric>('profitRate');
+  const [addStatus, setAddStatus] = useState<StatusMetric | null>(null);
   const [indicatorPickerFor, setIndicatorPickerFor] = useState<string | null>(null);
-  const [addActionKind, setAddActionKind] = useState<'buy' | 'sell' | 'stoploss'>('buy');
+  const [addActionKind, setAddActionKind] = useState<'buy' | 'sell' | 'stoploss' | ''>('');
   const [editingActionId, setEditingActionId] = useState<string | null>(null);
+  // 외부 추가 버튼으로 편집기 로컬 상태 강제 동기화를 위한 논스
+  const [editNonce, setEditNonce] = useState(0);
+  const [justAdded, setJustAdded] = useState<string | null>(null);
+  const collectStatusNodes = (node: any, acc: StatusLeafNode[] = []): StatusLeafNode[] => {
+    if (!node || typeof node !== 'object') return acc;
+    if ((node as any).kind === 'status') acc.push(node as any);
+    if ((node as any).kind === 'group' && Array.isArray((node as any).children)) (node as any).children.forEach((c: any) => collectStatusNodes(c, acc));
+    return acc;
+  };
 
   useEffect(() => {
     if (open && group) {
@@ -121,6 +130,9 @@ export function GroupEditModal({
                   ];
                   return { ...base, children: nextChildren };
                 });
+                setEditNonce((n) => n + 1);
+                setJustAdded(`지표 추가됨: ${addType.toUpperCase()}`);
+                setTimeout(() => setJustAdded(null), 1200);
               }}
               className="rounded border border-emerald-500/60 px-2 py-1 text-[11px] text-emerald-200"
             >
@@ -128,10 +140,11 @@ export function GroupEditModal({
             </button>
             <span className="ml-4 text-zinc-300">상태 추가</span>
             <select
-              value={addStatus}
-              onChange={(e) => setAddStatus(e.target.value as StatusMetric)}
+              value={addStatus ?? ''}
+              onChange={(e) => setAddStatus((e.target.value || null) as any)}
               className="rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-[11px] text-zinc-100"
             >
+              <option value="">선택</option>
               <option value="profitRate">현재 수익률(%)</option>
               <option value="margin">현재 마진</option>
               <option value="buyCount">매수 횟수</option>
@@ -139,7 +152,9 @@ export function GroupEditModal({
             </select>
             <button
               type="button"
+              disabled={!addStatus}
               onClick={() => {
+                if (!addStatus) return; // Type guard
                 const createStatus = (metric: StatusMetric): StatusLeafNode => {
                   const id = `cond-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
                   const base: StatusLeafNode = { kind: 'status', id, metric, comparator: 'over', value: 0 } as StatusLeafNode;
@@ -154,6 +169,9 @@ export function GroupEditModal({
                   const nextChildren = [...base.children, (createStatus(addStatus) as unknown) as ConditionNode];
                   return { ...base, children: nextChildren };
                 });
+                setEditNonce((n) => n + 1);
+                setJustAdded('상태 추가됨');
+                setTimeout(() => setJustAdded(null), 1200);
               }}
               className="rounded border border-sky-500/60 px-2 py-1 text-[11px] text-sky-200"
             >
@@ -165,12 +183,14 @@ export function GroupEditModal({
               onChange={(e) => setAddActionKind(e.target.value as any)}
               className="rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-[11px] text-zinc-100"
             >
+              <option value="">선택</option>
               <option value="buy">매수 주문</option>
               <option value="sell">매도 주문</option>
               <option value="stoploss">스탑로스 주문</option>
             </select>
             <button
               type="button"
+              disabled={!addActionKind}
               onClick={() => {
                 const id = `act-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
                 const def = (() => {
@@ -192,8 +212,29 @@ export function GroupEditModal({
               추가
             </button>
           </div>
+          {justAdded ? (
+            <div className="rounded border border-emerald-700/40 bg-emerald-950/40 px-3 py-1 text-[12px] text-emerald-200">
+              {justAdded}
+            </div>
+          ) : null}
+
+          {/* 간단 요약: 외부 추가 직후에도 즉시 확인 가능 */}
+          {(() => {
+            const g = ensureGroup((editedGroup ?? ({ kind: 'group', id: groupId, operator: 'and', children: [] } as any)) as any);
+            const inds = collectIndicatorNodes(g);
+            const stats = collectStatusNodes(g);
+            return (
+              <div className="rounded border border-zinc-800 bg-zinc-950/40 px-3 py-2 text-[11px] text-zinc-300">
+                <span className="mr-2">현재 조건</span>
+                <span className="rounded border border-zinc-700 px-2 py-0.5">지표 {inds.length}</span>
+                <span className="ml-1 rounded border border-zinc-700 px-2 py-0.5">상태 {stats.length}</span>
+              </div>
+            );
+          })()}
+
           {/* Embedded editor body only (no overlay/header) */}
           <ConditionsEditorModal
+            key={`group-editor-${groupId}-${editNonce}`}
             open={true}
             title=""
             value={{ root: (editedGroup ?? ({ kind: 'group', id: groupId, operator: 'and', children: [] } as any)) } as any}

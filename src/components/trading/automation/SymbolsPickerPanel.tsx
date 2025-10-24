@@ -86,6 +86,8 @@ export function SymbolsPickerPanel({
   const [items, setItems] = useState<TickerInfo[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // 심볼별 최대 레버리지 맵 (예: BTCUSDT -> 125)
+  const [levMaxMap, setLevMaxMap] = useState<Record<string, number>>({});
   // 제외 사유는 상위에서 관리/영속화
   // 좌측 필터 패널 상태(목록 표시 전용)
   const rawPrefs = useUIPreferencesStore((s) => s.autoTrading?.symbolsPicker);
@@ -178,6 +180,34 @@ export function SymbolsPickerPanel({
       controller.abort();
     };
   }, [quote, sort, search]);
+
+  // 선물 메타(최대 레버리지) 불러오기
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/trading/binance/futures-symbols');
+        if (!res.ok) return;
+        const json = (await res.json()) as { markets?: Array<{ symbol: string; base: string; quote: string; leverageBrackets?: Array<{ maxLeverage?: number | null }> }> };
+        const list = Array.isArray(json?.markets) ? json.markets : [];
+        const map: Record<string, number> = {};
+        list
+          .filter((m) => (m?.quote ?? '').toUpperCase() === quote)
+          .forEach((m) => {
+            const norm = normalizeSymbol(`${m.base}/${m.quote}`, quote);
+            const maxLev = (Array.isArray(m?.leverageBrackets) ? m.leverageBrackets : []).reduce((acc, t: any) => {
+              const lv = Number(t?.maxLeverage ?? 0) || 0;
+              return Math.max(acc, lv);
+            }, 0);
+            if (norm) map[norm] = maxLev || 0;
+          });
+        if (!cancelled) setLevMaxMap(map);
+      } catch {
+        if (!cancelled) setLevMaxMap({});
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [quote]);
 
   const filteredItems = useMemo(() => {
     return items.filter((t) => {
@@ -560,19 +590,18 @@ export function SymbolsPickerPanel({
           {/* 드래그 리사이즈 안내 (모바일 숨김) */}
           <div className="hidden border-b border-zinc-800 px-2 py-1 text-[10px] text-zinc-500 sm:block">컬럼 헤더 오른쪽 경계를 드래그해 너비를 조정할 수 있습니다.</div>
           <div className="max-h-64 overflow-auto overflow-x-auto">
-            <table className="w-full min-w-[720px] table-fixed text-left text-[11px] text-zinc-300 select-none">
+              <table className="w-full min-w-[720px] table-fixed text-left text-[11px] text-zinc-300 select-none">
               <colgroup>
                 <col className="w-28" />
-                <col className="w-20" />
                 <col className="w-24" />
                 {order.map((k) => (
                   <col key={`col-${k}`} className="w-24" style={{ display: enabled[k] ? undefined : 'none', width: widths[k] }} />
                 ))}
+                <col className="w-24" />
               </colgroup>
               <thead className="sticky top-0 bg-zinc-950">
                 <tr className="border-b border-zinc-800 text-zinc-400">
                   <th className="px-2 py-1">심볼</th>
-                  <th className="px-2 py-1">베이스</th>
                   <th className="px-2 py-1">쿼트</th>
                   {order.map((k) => (
                     <th key={`head-${k}`} className="relative px-2 py-1" style={{ display: enabled[k] ? undefined : 'none' }}>
@@ -598,6 +627,7 @@ export function SymbolsPickerPanel({
                       />
                     </th>
                   ))}
+                  <th className="px-2 py-1">최대 레버리지</th>
                 </tr>
               </thead>
               <tbody>
@@ -609,7 +639,6 @@ export function SymbolsPickerPanel({
                   return (
                     <tr key={sym} className="border-b border-zinc-800">
                       <td className="px-2 py-1 text-zinc-300">{sym}</td>
-                      <td className="px-2 py-1 text-zinc-400">{t.base}</td>
                       <td className="px-2 py-1 text-zinc-400">{t.quote}</td>
                       {order.map((k) => {
                         const listed = (t as any).listedDays as number | null | undefined;
@@ -642,6 +671,7 @@ export function SymbolsPickerPanel({
                           </td>
                         );
                       })}
+                      <td className="px-2 py-1 text-zinc-400">{levMaxMap[norm] ?? '-'}</td>
                       <td className="px-2 py-1 space-x-1">
                         {inSel ? (
                           <button className="rounded border border-rose-600 px-2 py-0.5 text-rose-300" onClick={() => removeManual(sym)}>
@@ -670,7 +700,7 @@ export function SymbolsPickerPanel({
           </div>
         </div>
         {/* 중간 안내 문구 */}
-        <div className="mt-2 px-3 py-2 text-[12px] font-semibold text-emerald-200 whitespace-nowrap overflow-hidden text-ellipsis rounded border border-emerald-800/50 bg-emerald-950/40">
+        <div className="mt-2 px-3 py-2 text-[12px] font-semibold text-emerald-200 rounded border border-emerald-800/50 bg-emerald-950/40">
           종목 세부 설정 - 기본설정보다 우선 적용됩니다.
         </div>
       </div>
@@ -869,17 +899,27 @@ export function SymbolsPickerPanel({
                           className="w-20 rounded border border-zinc-700 bg-zinc-900 px-1 py-0.5"
                           >
                             <option value="default">기본</option>
-                            <option value="custom">입력값</option>
+                            <option value="custom">드롭다운</option>
                           </select>
                             {levMode === 'custom' ? (
-                              <input
-                                type="number"
-                                min={1}
-                                max={125}
-                                value={typeof lev === 'number' && lev > 0 ? lev : ''}
-                                onChange={(e) => setLev(sym, Math.min(125, Math.max(1, Number(e.target.value) || 1)))}
-                                className="w-16 rounded border border-zinc-700 bg-zinc-900 px-1 py-0.5 text-right"
-                              />
+                              (() => {
+                                const upSym = sym.toUpperCase();
+                                const maxForSym = levMaxMap[upSym] ?? 125;
+                                const CANDS = [1,2,3,5,10,15,20,25,30,35,40,50,75,100,125].filter((v) => v <= Math.max(1, maxForSym));
+                                const current = (typeof lev === 'number' && lev > 0) ? Math.min(maxForSym, lev) : '';
+                                return (
+                                  <select
+                                    value={current as any}
+                                    onChange={(e) => setLev(sym, Math.min(maxForSym, Math.max(1, Number(e.target.value) || 1)))}
+                                    className="w-20 rounded border border-zinc-700 bg-zinc-900 px-1 py-0.5 text-center"
+                                  >
+                                    <option value="" disabled>선택</option>
+                                    {CANDS.map((v) => (
+                                      <option key={v} value={v}>{v}x</option>
+                                    ))}
+                                  </select>
+                                );
+                              })()
                             ) : null}
                           </div>
                         </td>

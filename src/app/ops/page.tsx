@@ -6,6 +6,8 @@ import { listAllProfiles } from '@/lib/users/profile';
 import { UserRoleManager } from '@/components/ops/UserRoleManager';
 import { PermissionMatrixCard } from '@/components/ops/PermissionMatrixCard';
 import { getUserLogsMap } from '@/lib/logs/audit';
+import SessionInfoCard from '@/components/ops/SessionInfoCard';
+import { StrategyManagerPanel } from '@/components/trading/automation/StrategyManagerPanel';
 
 export default async function OpsPage() {
   await requireRole('sys_admin', '/ops');
@@ -31,11 +33,15 @@ export default async function OpsPage() {
           </nav>
         </div>
       </div>
+      <SessionInfoCard />
       <section className="grid gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <article className="rounded-lg border border-zinc-800 bg-zinc-900 p-6">
           <UserRoleManager profiles={profiles} logsByUserId={logsByUserId} />
         </article>
-        <PermissionMatrixCard />
+        <div className="space-y-6">
+          <PermissionMatrixCard />
+          <StrategyManagerPanel />
+        </div>
       </section>
     </div>
   );

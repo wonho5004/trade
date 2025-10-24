@@ -5,7 +5,7 @@ import { useActionState } from 'react';
 import { useFormStatus } from 'react-dom';
 
 import { defaultOpsActionState, type OpsActionState } from '@/app/ops/form-state';
-import { assignUserRoleAction, bootstrapAdminAccountAction, deleteUserAction } from '@/app/ops/actions';
+import { assignUserRoleAction, bootstrapAdminAccountAction, deleteUserAction, updateUserProfileAction } from '@/app/ops/actions';
 import type { UserSummary } from '@/lib/users/profile';
 import type { AuditLogEntry } from '@/lib/logs/audit';
 
@@ -57,6 +57,7 @@ export function UserRoleManager({
   const [roleState, roleAction] = useActionState(assignUserRoleAction, defaultOpsActionState);
   const [bootstrapState, bootstrapAction] = useActionState(bootstrapAdminAccountAction, defaultOpsActionState);
   const [deleteState, deleteAction] = useActionState(deleteUserAction, defaultOpsActionState);
+  const [updateState, updateAction] = useActionState(updateUserProfileAction, defaultOpsActionState);
 
   const [search, setSearch] = useState('');
   const [selectedUserId, setSelectedUserId] = useState<string | null>(profiles[0]?.id ?? null);
@@ -193,6 +194,8 @@ export function UserRoleManager({
         logs={selectedLogs}
         deleteAction={deleteAction}
         deleteState={deleteState}
+        updateAction={updateAction}
+        updateState={updateState}
         isDeleteDisabled={!selectedUser}
       />
     </div>
@@ -204,12 +207,16 @@ function UserActivityPanel({
   logs,
   deleteAction,
   deleteState,
+  updateAction,
+  updateState,
   isDeleteDisabled
 }: {
   selectedUser: UserSummary | null;
   logs: AuditLogEntry[];
   deleteAction: (formData: FormData) => void;
   deleteState: OpsActionState;
+  updateAction: (formData: FormData) => void;
+  updateState: OpsActionState;
   isDeleteDisabled: boolean;
 }) {
   return (
@@ -243,16 +250,38 @@ function UserActivityPanel({
             <p className="mt-3 text-sm text-zinc-400">사용자를 선택하면 상세 정보와 로그 요약이 표시됩니다.</p>
           )}
         </div>
-        <form action={deleteAction} className="flex flex-col items-end gap-2">
-          <input type="hidden" name="userId" value={selectedUser?.id ?? ''} />
-          <button
-            type="submit"
-            disabled={isDeleteDisabled}
-            className="rounded border border-rose-500 px-3 py-1 text-xs font-semibold text-rose-300 transition hover:bg-rose-500/10 disabled:cursor-not-allowed disabled:border-zinc-700 disabled:text-zinc-500"
-          >
-            선택 사용자 삭제
-          </button>
-        </form>
+        <div className="flex flex-col items-end gap-2">
+          <form action={updateAction} className="grid w-full gap-2 rounded border border-zinc-800 bg-zinc-900 p-3 md:grid-cols-2">
+            <input type="hidden" name="userId" value={selectedUser?.id ?? ''} />
+            <label className="flex items-center gap-2 text-xs">
+              <span className="w-20 text-zinc-500">표시 이름</span>
+              <input name="displayName" defaultValue={selectedUser?.displayName ?? ''} className="min-w-0 flex-1 rounded border border-zinc-800 bg-zinc-950 px-2 py-1 text-zinc-100" />
+            </label>
+            <label className="flex items-center gap-2 text-xs">
+              <span className="w-20 text-zinc-500">닉네임</span>
+              <input name="nickname" defaultValue={selectedUser?.nickname ?? ''} className="min-w-0 flex-1 rounded border border-zinc-800 bg-zinc-950 px-2 py-1 text-zinc-100" />
+            </label>
+            <label className="flex items-center gap-2 text-xs">
+              <span className="w-20 text-zinc-500">연락처</span>
+              <input name="phone" defaultValue={selectedUser?.phone ?? ''} className="min-w-0 flex-1 rounded border border-zinc-800 bg-zinc-950 px-2 py-1 text-zinc-100" />
+            </label>
+            <div className="flex items-center justify-end">
+              <button type="submit" className="rounded border border-emerald-600 px-3 py-1 text-xs font-semibold text-emerald-300">정보 변경</button>
+            </div>
+            <ActionMessage state={updateState} />
+          </form>
+
+          <form action={deleteAction} className="flex flex-col items-end gap-2">
+            <input type="hidden" name="userId" value={selectedUser?.id ?? ''} />
+            <button
+              type="submit"
+              disabled={isDeleteDisabled}
+              className="rounded border border-rose-500 px-3 py-1 text-xs font-semibold text-rose-300 transition hover:bg-rose-500/10 disabled:cursor-not-allowed disabled:border-zinc-700 disabled:text-zinc-500"
+            >
+              선택 사용자 삭제
+            </button>
+          </form>
+        </div>
       </div>
       <div className="space-y-2 rounded border border-zinc-800 bg-zinc-900 p-4 text-sm text-zinc-300">
         <h4 className="text-sm font-semibold text-zinc-100">활동 로그</h4>

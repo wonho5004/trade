@@ -281,6 +281,11 @@ const createScaleInLimit = (): ScaleInLimit => ({
     comparator: 'over',
     value: 1
   },
+  notional: {
+    enabled: false,
+    asset: 'USDT',
+    amount: 0
+  },
   profitRate: createProfitCondition(),
   unlimited: true
 });

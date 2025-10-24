@@ -20,6 +20,12 @@ function pct(value?: number) {
   return `${value}%`;
 }
 
+function fmt(n?: number) {
+  if (!Number.isFinite(n as number)) return '-';
+  const v = Number(n);
+  return v >= 1000 ? v.toLocaleString(undefined, { maximumFractionDigits: 2 }) : v.toFixed(2);
+}
+
 function chip(text: string, title?: string) {
   return (
     <span
@@ -149,7 +155,30 @@ export function LogicSummary({ settings }: { settings: AutoTradingSettings }) {
             <button className="ml-2 rounded border border-zinc-700 px-1 py-0.5 text-[10px] text-zinc-300 hover:border-sky-500/60 hover:text-sky-200" onClick={() => setDetail({ key: 'base', title: '기본 설정 상세' })}>상세</button>
           </div>
           <div className="mt-1 text-[11px] text-zinc-500">
-            자본 제한: 최대 마진 {s.capital.maxMargin.percentage}% ({s.capital.maxMargin.basis}) · 초기 진입 {s.capital.initialMargin.mode} {s.capital.initialMargin.percentage}% 최소 {s.capital.initialMargin.minNotional} USDT
+            {(() => {
+              const cap = s.capital;
+              const basis = String(cap.maxMargin.basis).toUpperCase();
+              const maxTxt = `최대 ${basis} ${cap.maxMargin.percentage}%`;
+              const im = cap.initialMargin;
+              const imTxt = im.mode === 'usdt_amount'
+                ? `초기 ${fmt(im.usdtAmount)} ${im.asset ?? 'USDT'}`
+                : im.mode === 'min_notional'
+                ? `초기 최소주문 ${fmt(im.minNotional)} ${im.asset ?? 'USDT'}`
+                : im.mode === 'per_symbol_percentage'
+                ? `초기 종목당 ${im.percentage}% (${im.basis})`
+                : `초기 총잔고 ${im.percentage}% (${im.basis})`;
+              const sb = cap.scaleInBudget;
+              const sbTxt = sb.mode === 'usdt_amount'
+                ? `추매 ${fmt(sb.usdtAmount)} ${sb.asset ?? 'USDT'}`
+                : sb.mode === 'min_notional'
+                ? `추매 최소주문 ${fmt(sb.minNotional)} ${sb.asset ?? 'USDT'}`
+                : sb.mode === 'per_symbol_percentage'
+                ? `추매 종목당 ${sb.percentage}% (${sb.basis})`
+                : sb.mode === 'balance_percentage'
+                ? `추매 총잔고 ${sb.percentage}% (${sb.basis})`
+                : `추매 현재매수 ${sb.percentage}%`;
+              return `${maxTxt} · ${imTxt} · ${sbTxt}`;
+            })()}
           </div>
           <div className="mt-2">
             <StackedBar

@@ -4,6 +4,7 @@ import type { Market, Ticker } from 'ccxt';
 
 import { normalizeBinanceLeverageTiers } from '@/lib/trading/adapters/binanceLeverage';
 import { createBinanceFuturesClient } from '@/lib/trading/exchange';
+import { getAuthenticatedProfile } from '@/lib/users/profile';
 import type { LeverageTierMap } from '@/types/trading/margin';
 import type { FuturesSymbolMeta } from '@/types/trading/markets';
 
@@ -25,7 +26,13 @@ export async function GET() {
       });
     }
 
-    const client = createBinanceFuturesClient();
+    // 가능하면 사용자 자격증명을 사용해 레버리지 티어(인증 필요)를 조회
+    const prof = await getAuthenticatedProfile();
+    const client = createBinanceFuturesClient(
+      prof?.binanceApiKey && prof?.binanceApiSecret
+        ? { apiKey: prof.binanceApiKey, secret: prof.binanceApiSecret }
+        : undefined
+    );
     const markets = (await client.fetchMarkets()) as Market[];
     let tickers: Record<string, Ticker> | null = null;
     let leverageTiers: LeverageTierMap = {};
@@ -47,6 +54,8 @@ export async function GET() {
       .filter((market: Market) => Boolean(market?.active) && (market?.quote === 'USDT' || market?.quote === 'USDC'))
       .map((market: Market) => {
         const m: Market = market as Market;
+        const idKey = String((m as any).id ?? (m.info as any)?.symbol ?? `${m.base ?? ''}${m.quote ?? ''}`).toUpperCase();
+        const tiersFor = leverageTiers[idKey] ?? leverageTiers[`${String(m.base ?? '').toUpperCase()}${String(m.quote ?? '').toUpperCase()}`] ?? [];
         return {
           symbol: m.symbol,
           base: m.base ?? '',
@@ -65,7 +74,7 @@ export async function GET() {
           ),
           marketCapEstimate: extractMarketCap(tickers?.[m.symbol]),
           openInterest: extractNumber(tickers?.[m.symbol]?.info?.openInterest),
-          leverageBrackets: leverageTiers[m.symbol.toUpperCase()] ?? []
+          leverageBrackets: tiersFor
         } as FuturesSymbolMeta;
       })
       .sort((a, b) => a.symbol.localeCompare(b.symbol));
