@@ -22,7 +22,8 @@ const LOCAL_FALLBACK: TickerInfo[] = [
   { symbol: 'ETHUSDC', base: 'ETH', quote: 'USDC', priceChangePercent: 0, volume: 0, quoteVolume: 0, listedDays: null }
 ];
 
-type SortMode = 'alphabet' | 'tradeValue' | 'changeUp' | 'changeDown';
+type SortField = 'symbol' | 'val' | 'chg' | 'age' | 'lev';
+type SortDirection = 'asc' | 'desc';
 const MAX_AUTO_RULES = 10;
 
 export function SymbolsPickerPanel({
@@ -82,58 +83,31 @@ export function SymbolsPickerPanel({
   onClearMaxListingAgeDays: () => void;
 }) {
   const [search, setSearch] = useState('');
-  const [sort, setSort] = useState<SortMode>('alphabet');
+  const [sortField, setSortField] = useState<SortField>('symbol');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
   const [items, setItems] = useState<TickerInfo[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // 심볼별 최대 레버리지 맵 (예: BTCUSDT -> 125)
   const [levMaxMap, setLevMaxMap] = useState<Record<string, number>>({});
-  // 제외 사유는 상위에서 관리/영속화
-  // 좌측 필터 패널 상태(목록 표시 전용)
+  // 필터 상태
   const rawPrefs = useUIPreferencesStore((s) => s.autoTrading?.symbolsPicker);
   const symbolsPrefs = rawPrefs ?? {
-    columns: { vol: true, val: true, chg: true, age: true },
-    filters: { filterStable: true, hideUnknownListing: false, hideListingDays: null },
-    columnsOrder: ['vol', 'val', 'chg', 'age'] as Array<'vol'|'val'|'chg'|'age'>,
-    columnsWidth: { vol: 96, val: 96, chg: 96, age: 96 } as Record<'vol'|'val'|'chg'|'age', number>
+    filters: { filterStable: true, hideUnknownListing: false, hideListingDays: null }
   };
   const setSymbolsPrefs = useUIPreferencesStore((s) => s.updateSymbolsPickerPrefs);
   const [filterStable, setFilterStable] = useState<boolean>(symbolsPrefs.filters.filterStable);
-  // 목록 표시 컬럼 토글
-  const [colVol, setColVol] = useState<boolean>(symbolsPrefs.columns.vol);
-  const [colVal, setColVal] = useState<boolean>(symbolsPrefs.columns.val);
-  const [colChg, setColChg] = useState<boolean>(symbolsPrefs.columns.chg);
-  const [colAge, setColAge] = useState<boolean>(symbolsPrefs.columns.age);
-  const [order, setOrder] = useState<Array<'vol' | 'val' | 'chg' | 'age'>>((symbolsPrefs as any).columnsOrder ?? ['vol','val','chg','age']);
-  const [widths, setWidths] = useState<Record<'vol'|'val'|'chg'|'age', number>>((symbolsPrefs as any).columnsWidth ?? { vol: 96, val: 96, chg: 96, age: 96 });
   const [hideUnknownListing, setHideUnknownListing] = useState<boolean>(symbolsPrefs.filters.hideUnknownListing);
   const [hideListingDays, setHideListingDays] = useState<number | null>(symbolsPrefs.filters.hideListingDays);
 
-  // 변경 시 환경설정을 동기화합니다.
-  // - 렌더 중 호출될 수 있는 setState(updater) 내부에서는 side-effect를 피합니다.
-  // - 너비/표시순서는 이펙트로 저장해 안전하게 동기화합니다.
-  useEffect(() => {
-    setSymbolsPrefs({ columnsWidth: widths as any });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [widths]);
-  useEffect(() => {
-    setSymbolsPrefs({ columnsOrder: order as any });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [order]);
-
-  const labels: Record<'vol' | 'val' | 'chg' | 'age', string> = { vol: '현재가', val: '거래대금', chg: '변동률', age: '상장일수' };
-  const enabled = { vol: colVol, val: colVal, chg: colChg, age: colAge } as Record<'vol'|'val'|'chg'|'age', boolean>;
-  const move = (key: 'vol'|'val'|'chg'|'age', dir: 'left'|'right') => {
-    setOrder((prev) => {
-      const idx = prev.indexOf(key);
-      if (idx < 0) return prev;
-      const j = dir === 'left' ? idx - 1 : idx + 1;
-      if (j < 0 || j >= prev.length) return prev;
-      const next = prev.slice();
-      const [it] = next.splice(idx, 1);
-      next.splice(j, 0, it as any);
-      return next as any;
-    });
+  // 헤더 클릭 정렬 핸들러
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection('asc');
+    }
   };
 
   useEffect(() => {
@@ -210,7 +184,7 @@ export function SymbolsPickerPanel({
   }, [quote]);
 
   const filteredItems = useMemo(() => {
-    return items.filter((t) => {
+    let filtered = items.filter((t) => {
       if (filterStable) {
         const STABLES = new Set(['USDT','USDC','BUSD','DAI','TUSD','FDUSD','USDP','USTC']);
         if (STABLES.has(t.base.toUpperCase())) return false;
@@ -218,9 +192,50 @@ export function SymbolsPickerPanel({
       const listed = (t as any).listedDays as number | null | undefined;
       if (hideUnknownListing && listed == null) return false;
       if (hideListingDays != null && typeof listed === 'number' && listed <= hideListingDays) return false;
+      // 검색어 필터
+      if (search) {
+        const s = search.toUpperCase();
+        if (!t.symbol.toUpperCase().includes(s) && !t.base.toUpperCase().includes(s)) return false;
+      }
       return true;
     });
-  }, [items, filterStable, hideUnknownListing, hideListingDays]);
+
+    // 정렬
+    filtered.sort((a, b) => {
+      let aVal: number | string = 0;
+      let bVal: number | string = 0;
+
+      switch (sortField) {
+        case 'symbol':
+          aVal = a.symbol;
+          bVal = b.symbol;
+          break;
+        case 'val':
+          aVal = a.quoteVolume ?? 0;
+          bVal = b.quoteVolume ?? 0;
+          break;
+        case 'chg':
+          aVal = a.priceChangePercent ?? 0;
+          bVal = b.priceChangePercent ?? 0;
+          break;
+        case 'age':
+          aVal = (a as any).listedDays ?? 999999;
+          bVal = (b as any).listedDays ?? 999999;
+          break;
+        case 'lev':
+          aVal = levMaxMap[a.symbol] ?? 0;
+          bVal = levMaxMap[b.symbol] ?? 0;
+          break;
+      }
+
+      if (typeof aVal === 'string' && typeof bVal === 'string') {
+        return sortDirection === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+      }
+      return sortDirection === 'asc' ? (aVal as number) - (bVal as number) : (bVal as number) - (aVal as number);
+    });
+
+    return filtered;
+  }, [items, filterStable, hideUnknownListing, hideListingDays, search, sortField, sortDirection, levMaxMap]);
 
   const manualSet = useMemo(() => new Set(manual.map((s) => normalizeSymbol(s, quote))), [manual, quote]);
   const excludedSet = useMemo(() => new Set(excluded.map((s) => normalizeSymbol(s, quote))), [excluded, quote]);
@@ -496,233 +511,152 @@ export function SymbolsPickerPanel({
     return { includes, excludes };
   }, [rules, hideUnknownListing, setSymbolsPrefs, clearRule, onClearMaxListingAgeDays]);
 
+  // 정렬 아이콘
+  const getSortIcon = (field: SortField) => {
+    if (sortField !== field) return null;
+    return sortDirection === 'asc' ? ' ▲' : ' ▼';
+  };
+
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-300">
-        <label className="flex items-center gap-1">
-          <span className="text-zinc-400">쿼트</span>
-          <select value={quote} onChange={(e) => onChangeQuote(e.target.value as QuoteCurrency)} className="rounded border border-zinc-700 bg-zinc-900 px-2 py-1">
-            <option value="USDT">USDT</option>
-            <option value="USDC">USDC</option>
-          </select>
-        </label>
-        <input
-          placeholder="심볼 검색"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="w-48 rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-zinc-100"
-        />
-        <select value={sort} onChange={(e) => setSort(e.target.value as SortMode)} className="rounded border border-zinc-700 bg-zinc-900 px-2 py-1">
-          <option value="alphabet">알파벳순</option>
-          <option value="tradeValue">거래대금순</option>
-          <option value="changeUp">상승률순</option>
-          <option value="changeDown">하락률순</option>
-        </select>
-        <span className="ml-3 text-[11px] text-zinc-500">현재 선택 {manual.length}개 / 부족 {Math.max(0, symbolCount - manual.length)}개</span>
-        {loading ? <span className="text-zinc-500">불러오는 중…</span> : null}
-        {!loading && error ? <span className="text-amber-400">{error}</span> : null}
-      </div>
-      {/* 자동선택 블록: 선택 종목 위로 이동 (모달 실행 시 자동 채움 규칙으로 동작) */}
-      {/* 상단: 목록 전체폭 */}
-      <div className="grid gap-3 md:grid-cols-[220px_minmax(0,1fr)]">
-        {/* 좌측 필터 패널 */}
-        <div className="rounded border border-zinc-800 bg-zinc-950/60 p-2 text-[11px] text-zinc-300">
-          <p className="mb-1 font-medium text-zinc-300">필터</p>
-          <div className="space-y-2">
-            <label className="flex items-center gap-2">
+      {/* 심볼 목록 */}
+      <div className="rounded border border-zinc-800 bg-zinc-950/60">
+        {/* 헤더: 검색, 쿼트, 필터 통합 */}
+        <div className="border-b border-zinc-800 px-3 py-3 space-y-2">
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            <label className="flex items-center gap-1">
+              <span className="text-zinc-400">쿼트</span>
+              <select value={quote} onChange={(e) => onChangeQuote(e.target.value as QuoteCurrency)} className="rounded border border-zinc-700 bg-zinc-900 px-2 py-1">
+                <option value="USDT">USDT</option>
+                <option value="USDC">USDC</option>
+              </select>
+            </label>
+            <input
+              placeholder="심볼 검색 (예: BTC, ETH)"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="flex-1 min-w-[200px] rounded border border-zinc-700 bg-zinc-900 px-3 py-1 text-zinc-100"
+            />
+            <span className="text-[11px] text-zinc-500">
+              {filteredItems.length} / {items.length} 종목
+              {loading && ' · 불러오는 중…'}
+              {!loading && error && ` · ${error}`}
+            </span>
+          </div>
+
+          {/* 필터 */}
+          <div className="flex flex-wrap items-center gap-3 text-[11px] text-zinc-400">
+            <span className="text-zinc-500">필터:</span>
+            <label className="flex items-center gap-1">
               <input type="checkbox" className="h-4 w-4" checked={filterStable} onChange={(e) => { const v = e.target.checked; setFilterStable(v); setSymbolsPrefs({ filters: { filterStable: v } as any }); }} />
               <span>스테이블 제외</span>
             </label>
-            <div className="mt-2 border-t border-zinc-800 pt-2" />
-            <div className="flex flex-wrap items-center gap-3">
-              <span className="w-20 text-zinc-400">표시 컬럼</span>
-              <label className="flex items-center gap-1">
-                <input type="checkbox" className="h-4 w-4" checked={colVal} onChange={(e) => { const v = e.target.checked; setColVal(v); setSymbolsPrefs({ columns: { val: v } as any }); }} />
-                <span>거래대금</span>
-              </label>
-              <label className="flex items-center gap-1">
-                <input type="checkbox" className="h-4 w-4" checked={colChg} onChange={(e) => { const v = e.target.checked; setColChg(v); setSymbolsPrefs({ columns: { chg: v } as any }); }} />
-                <span>변동률</span>
-              </label>
-              <label className="flex items-center gap-1">
-                <input type="checkbox" className="h-4 w-4" checked={colAge} onChange={(e) => { const v = e.target.checked; setColAge(v); setSymbolsPrefs({ columns: { age: v } as any }); }} />
-                <span>상장일수</span>
-              </label>
-            </div>
-            {/* 표시 순서/컬럼 너비 조정 UI는 심볼 목록 상단/헤더로 이동 */}
-            <div className="mt-2 border-t border-zinc-800 pt-2" />
-            <div className="space-y-2">
-              <div className="text-zinc-400">상장일 필터</div>
-              <label className="flex items-center gap-2">
-                <input type="checkbox" className="h-4 w-4" checked={hideUnknownListing} onChange={(e) => { const v = e.target.checked; setHideUnknownListing(v); setSymbolsPrefs({ filters: { hideUnknownListing: v } as any }); }} />
-                <span>상장일 정보 없음 숨기기</span>
-              </label>
-              <label className="flex items-center gap-2">
-                <span className="w-24 text-zinc-400">상장일 ≤(일)</span>
-                <input type="number" className="w-24 rounded border border-zinc-700 bg-zinc-900 px-2 py-1" value={hideListingDays ?? ''}
-                  onChange={(e) => { const v = e.target.value === '' ? null : Math.max(1, Math.min(1000, Number(e.target.value) || 1)); setHideListingDays(v); setSymbolsPrefs({ filters: { hideListingDays: v as any } as any }); }} />
-              </label>
-            </div>
+            <label className="flex items-center gap-1">
+              <input type="checkbox" className="h-4 w-4" checked={hideUnknownListing} onChange={(e) => { const v = e.target.checked; setHideUnknownListing(v); setSymbolsPrefs({ filters: { hideUnknownListing: v } as any }); }} />
+              <span>상장일 미상 제외</span>
+            </label>
+            <label className="flex items-center gap-1">
+              <span>상장일 ≤</span>
+              <input type="number" className="w-16 rounded border border-zinc-700 bg-zinc-900 px-2 py-0.5" placeholder="일" value={hideListingDays ?? ''}
+                onChange={(e) => { const v = e.target.value === '' ? null : Math.max(1, Math.min(1000, Number(e.target.value) || 1)); setHideListingDays(v); setSymbolsPrefs({ filters: { hideListingDays: v as any } as any }); }} />
+              <span>일 제외</span>
+            </label>
+            <span className="ml-auto text-[11px] text-zinc-500">선택 {manual.length} / 필요 {symbolCount}</span>
           </div>
         </div>
 
-        {/* 심볼 목록 */}
-        <div className="rounded border border-zinc-800 bg-zinc-950/60">
-          <div className="border-b border-zinc-800 px-3 py-2">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="text-sm font-medium text-zinc-200">심볼 목록</span>
+        {/* 테이블 */}
+        <div className="max-h-96 overflow-auto">
+          <table className="w-full table-fixed text-left text-[11px] text-zinc-300">
+            <colgroup>
+              <col className="w-28" />
+              <col className="w-32" />
+              <col className="w-24" />
+              <col className="w-24" />
+              <col className="w-24" />
+              <col className="w-24" />
+            </colgroup>
+            <thead className="sticky top-0 bg-zinc-900 border-b border-zinc-800">
+              <tr className="text-zinc-400">
+                <th className="px-2 py-1 cursor-pointer hover:bg-zinc-800 hover:text-zinc-200" onClick={() => handleSort('symbol')}>
+                  심볼{getSortIcon('symbol')}
+                </th>
+                <th className="px-2 py-1">액션</th>
+                <th className="px-2 py-1 cursor-pointer hover:bg-zinc-800 hover:text-zinc-200" onClick={() => handleSort('val')}>
+                  거래대금{getSortIcon('val')}
+                </th>
+                <th className="px-2 py-1 cursor-pointer hover:bg-zinc-800 hover:text-zinc-200" onClick={() => handleSort('chg')}>
+                  변동률{getSortIcon('chg')}
+                </th>
+                <th className="px-2 py-1 cursor-pointer hover:bg-zinc-800 hover:text-zinc-200" onClick={() => handleSort('age')}>
+                  상장일수{getSortIcon('age')}
+                </th>
+                <th className="px-2 py-1 cursor-pointer hover:bg-zinc-800 hover:text-zinc-200" onClick={() => handleSort('lev')}>
+                  최대 레버리지{getSortIcon('lev')}
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredItems.map((t) => {
+                const sym = `${t.base}/${t.quote}`;
+                const norm = normalizeSymbol(sym, quote);
+                const inSel = manualSet.has(norm);
+                const inEx = excludedSet.has(norm);
+                const listed = (t as any).listedDays as number | null | undefined;
+                const chg = Number(t.priceChangePercent ?? 0);
+                const chgIcon = chg > 0 ? '▲' : chg < 0 ? '▼' : '•';
+                const chgClass = chg > 0 ? 'text-emerald-400' : chg < 0 ? 'text-rose-400' : 'text-zinc-400';
+                const qv = Number(t.quoteVolume ?? 0);
 
-              {/* 표시 순서 조정 - 개선된 UI */}
-              <div className="flex items-center gap-2">
-                <span className="text-[11px] text-zinc-500">컬럼 순서:</span>
-                <div className="flex items-center gap-1">
-                  {order.map((k, idx) => (
-                    <div key={`ctrl-${k}`} className="flex items-center gap-0.5 rounded border border-zinc-700 bg-zinc-900 px-2 py-1">
-                      <span className="text-[11px] text-zinc-300">{labels[k]}</span>
-                      <div className="flex gap-0.5 ml-1">
-                        <button
-                          className="rounded px-1 text-[10px] text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-zinc-400"
-                          onClick={() => { move(k, 'left'); }}
-                          disabled={idx === 0}
-                          aria-label={`${labels[k]} 왼쪽으로`}
-                          title="왼쪽으로 이동"
-                        >
-                          ◀
+                return (
+                  <tr key={sym} className="border-b border-zinc-800 hover:bg-zinc-900/30">
+                    <td className="px-2 py-1 text-zinc-300">{sym}</td>
+                    <td className="px-2 py-1 space-x-1">
+                      {inSel ? (
+                        <button className="rounded border border-rose-600 px-2 py-0.5 text-[10px] text-rose-300 hover:bg-rose-900/20" onClick={() => removeManual(sym)}>
+                          제거
                         </button>
-                        <button
-                          className="rounded px-1 text-[10px] text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-zinc-400"
-                          onClick={() => { move(k, 'right'); }}
-                          disabled={idx === order.length - 1}
-                          aria-label={`${labels[k]} 오른쪽으로`}
-                          title="오른쪽으로 이동"
-                        >
-                          ▶
+                      ) : (
+                        <button className="rounded border border-emerald-600 px-2 py-0.5 text-[10px] text-emerald-300 hover:bg-emerald-900/20" onClick={() => addManual(sym)}>
+                          추가
                         </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
+                      )}
+                      {inEx ? (
+                        <button className="rounded border border-zinc-600 px-2 py-0.5 text-[10px] text-zinc-300 hover:bg-zinc-800" onClick={() => removeExcluded(sym)}>
+                          제외해제
+                        </button>
+                      ) : (
+                        <button className="rounded border border-zinc-600 px-2 py-0.5 text-[10px] text-zinc-300 hover:bg-zinc-800" onClick={() => addExcluded(sym)}>
+                          제외
+                        </button>
+                      )}
+                    </td>
+                    <td className="px-2 py-1 text-zinc-400">
+                      {qv > 0 ? new Intl.NumberFormat('en-US', { notation: 'compact' }).format(qv) : '-'}
+                    </td>
+                    <td className="px-2 py-1">
+                      <span className={chgClass}>
+                        <span className="mr-1">{chgIcon}</span>
+                        {chg.toFixed(2)}%
+                      </span>
+                    </td>
+                    <td className="px-2 py-1 text-zinc-400">
+                      {listed != null ? `${listed}일` : '-'}
+                    </td>
+                    <td className="px-2 py-1 text-zinc-400">
+                      {levMaxMap[norm] ?? '-'}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
 
-              <span className="text-[11px] text-zinc-400">{filteredItems.length} 종목</span>
-            </div>
-          </div>
-          {/* 드래그 리사이즈 안내 (모바일 숨김) */}
-          <div className="hidden border-b border-zinc-800 px-2 py-1 text-[10px] text-zinc-500 sm:block">컬럼 헤더 오른쪽 경계를 드래그해 너비를 조정할 수 있습니다.</div>
-          <div className="max-h-64 overflow-auto overflow-x-auto">
-              <table className="w-full min-w-[720px] table-fixed text-left text-[11px] text-zinc-300 select-none">
-              <colgroup>
-                <col className="w-28" />
-                <col className="w-24" />
-                {order.map((k) => (
-                  <col key={`col-${k}`} className="w-24" style={{ display: enabled[k] ? undefined : 'none', width: widths[k] }} />
-                ))}
-                <col className="w-24" />
-              </colgroup>
-              <thead className="sticky top-0 bg-zinc-950">
-                <tr className="border-b border-zinc-800 text-zinc-400">
-                  <th className="px-2 py-1">심볼</th>
-                  <th className="px-2 py-1">쿼트</th>
-                  {order.map((k) => (
-                    <th key={`head-${k}`} className="relative px-2 py-1" style={{ display: enabled[k] ? undefined : 'none' }}>
-                      {labels[k]}
-                      <span
-                        onMouseDown={(e) => {
-                          const startX = e.clientX;
-                          const start = widths[k];
-                          const onMove = (ev: MouseEvent) => {
-                            const dx = ev.clientX - startX;
-                            const nextW = Math.max(64, Math.min(240, start + dx));
-                            setWidths((prev) => (prev[k] === nextW ? prev : ({ ...prev, [k]: nextW } as any)));
-                          };
-                          const onUp = () => {
-                            window.removeEventListener('mousemove', onMove);
-                            window.removeEventListener('mouseup', onUp);
-                          };
-                          window.addEventListener('mousemove', onMove);
-                          window.addEventListener('mouseup', onUp);
-                        }}
-                        className="absolute right-0 top-0 h-full w-1 cursor-col-resize bg-transparent"
-                        title="드래그하여 너비 조정"
-                      />
-                    </th>
-                  ))}
-                  <th className="px-2 py-1">최대 레버리지</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredItems.map((t) => {
-                  const sym = `${t.base}/${t.quote}`;
-                  const norm = normalizeSymbol(sym, quote);
-                  const inSel = manualSet.has(norm);
-                  const inEx = excludedSet.has(norm);
-                  return (
-                    <tr key={sym} className="border-b border-zinc-800">
-                      <td className="px-2 py-1 text-zinc-300">{sym}</td>
-                      <td className="px-2 py-1 text-zinc-400">{t.quote}</td>
-                      {order.map((k) => {
-                        const listed = (t as any).listedDays as number | null | undefined;
-                        const chg = Number(t.priceChangePercent ?? 0);
-                        const chgIcon = chg > 0 ? '▲' : chg < 0 ? '▼' : '•';
-                        const chgClass = chg > 0 ? 'text-emerald-400' : chg < 0 ? 'text-rose-400' : 'text-zinc-400';
-                        return (
-                          <td key={`cell-${sym}-${k}`} className="px-2 py-1 text-zinc-500" style={{ display: enabled[k] ? undefined : 'none' }}>
-                            {k === 'vol' ? (
-                              (() => {
-                                const vol = Number(t.volume ?? 0);
-                                const qv = Number(t.quoteVolume ?? 0);
-                                const p = vol > 0 ? qv / vol : NaN;
-                                const display = isFinite(p) && p > 0 ? p.toFixed(4) : '-';
-                                return <span className={chgClass}>{display}</span>;
-                              })()
-                            ) : k === 'val' ? (
-                              (() => {
-                                const qv = Number(t.quoteVolume ?? 0);
-                                return qv > 0 ? Intl.NumberFormat('en-US', { notation: 'compact' }).format(qv) : '-';
-                              })()
-                            ) : k === 'chg' ? (
-                              <span className={chgClass}>
-                                <span className="mr-1 align-middle">{chgIcon}</span>
-                                {chg.toFixed(2)}%
-                              </span>
-                            ) : (
-                              listed != null ? `${listed}일` : '-'
-                            )}
-                          </td>
-                        );
-                      })}
-                      <td className="px-2 py-1 text-zinc-400">{levMaxMap[norm] ?? '-'}</td>
-                      <td className="px-2 py-1 space-x-1">
-                        {inSel ? (
-                          <button className="rounded border border-rose-600 px-2 py-0.5 text-rose-300" onClick={() => removeManual(sym)}>
-                            제거
-                          </button>
-                        ) : (
-                          <button className="rounded border border-emerald-600 px-2 py-0.5 text-emerald-300" onClick={() => addManual(sym)}>
-                            추가
-                          </button>
-                        )}
-                        {inEx ? (
-                          <button className="rounded border border-zinc-600 px-2 py-0.5 text-zinc-300" onClick={() => removeExcluded(sym)}>
-                            제외해제
-                          </button>
-                        ) : (
-                          <button className="rounded border border-zinc-600 px-2 py-0.5 text-zinc-300" onClick={() => addExcluded(sym)}>
-                            제외
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-        {/* 중간 안내 문구 */}
-        <div className="mt-2 px-3 py-2 text-[12px] font-semibold text-emerald-200 rounded border border-emerald-800/50 bg-emerald-950/40">
-          종목 세부 설정 - 기본설정보다 우선 적용됩니다.
-        </div>
+      {/* 중간 안내 문구 */}
+      <div className="mt-2 px-3 py-2 text-[12px] font-semibold text-emerald-200 rounded border border-emerald-800/50 bg-emerald-950/40">
+        종목 세부 설정 - 기본설정보다 우선 적용됩니다.
       </div>
 
       {/* 하단: 자동선택 블록 (선택 종목 위) */}
