@@ -130,12 +130,12 @@ export function SymbolsPickerPanel({
         }
       };
 
-      const base = new URLSearchParams({ quote, sort, limit: '2000' });
+      const base = new URLSearchParams({ quote, limit: '2000' });
       if (search.trim()) base.set('search', search.trim());
       let list = await tryFetch(base);
       if (!list || list.length === 0) {
-        // fallback: try tradeValue sort without search
-        const alt = new URLSearchParams({ quote, sort: 'tradeValue', limit: '2000' });
+        // fallback: try without search
+        const alt = new URLSearchParams({ quote, limit: '2000' });
         list = await tryFetch(alt);
       }
       if (!aborted) {
@@ -153,7 +153,7 @@ export function SymbolsPickerPanel({
       aborted = true;
       controller.abort();
     };
-  }, [quote, sort, search]);
+  }, [quote, search]);
 
   // 선물 메타(최대 레버리지) 불러오기
   useEffect(() => {
