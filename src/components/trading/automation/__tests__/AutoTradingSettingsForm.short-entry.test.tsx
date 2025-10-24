@@ -47,7 +47,8 @@ describe('AutoTradingSettingsForm – short entry indicators', () => {
     await user.click(addGroupButtons[addGroupButtons.length - 1]);
 
     // 그룹 편집 열기(숏 패널 쪽 버튼 선택)
-    const editGroupButtons = entryWithin.getAllByRole('button', { name: '그룹 편집' });
+    // GroupListPanelV2에서는 버튼 텍스트가 "편집"이고 title로 구분
+    const editGroupButtons = entryWithin.getAllByTitle('그룹 전체 편집');
     await user.click(editGroupButtons[editGroupButtons.length - 1]);
 
     // 모달에서 지표 추가: 볼린저 밴드 선택 후 추가 → 저장
@@ -65,8 +66,9 @@ describe('AutoTradingSettingsForm – short entry indicators', () => {
       expect(useAutoTradingSettingsStore.getState().settings.entry.short.indicators.entries.length).toBeGreaterThan(0);
     });
 
-    // 숏 패널에서 ‘지표 편집’ 버튼 클릭하여 편집 모달이 뜨는지 확인
-    const indicatorEditButtons = entryWithin.getAllByRole('button', { name: '지표 편집' });
+    // 숏 패널에서 '지표 편집' 버튼 클릭하여 편집 모달이 뜨는지 확인
+    // GroupListPanelV2에서는 버튼 텍스트가 "편집"이고 title로 구분
+    const indicatorEditButtons = entryWithin.getAllByTitle('이 조건만 편집');
     await user.click(indicatorEditButtons[indicatorEditButtons.length - 1]);
     const indicatorDialog = await screen.findByRole('dialog');
     expect(within(indicatorDialog).getByText('지표 편집')).toBeInTheDocument();

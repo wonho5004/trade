@@ -20,6 +20,7 @@ import { normalizeSymbol, uniqueAppend, removeSymbol } from '@/lib/trading/symbo
 import { isNameTaken } from '@/lib/trading/strategies/local';
 import { LogicNameManagerModal } from './LogicNameManagerModal';
 import { GroupListPanel } from './GroupListPanel';
+import { GroupListPanelV2 } from './GroupListPanelV2';
 import { ConditionsPreview } from './ConditionsPreview';
 import { PreviewLauncher } from './PreviewLauncher';
 import { createIndicatorConditions, normalizeConditionTree } from '@/lib/trading/autoTradingDefaults';
@@ -2184,7 +2185,7 @@ export function AutoTradingSettingsForm() {
                     </div>
                     <div className="flex items-center gap-3 text-[11px] text-zinc-400" />
                   </div>
-                  <GroupListPanel
+                  <GroupListPanelV2
                   value={ensureIndicators(draft.entry[dir].indicators)}
                   onChange={(next) => {
                     // 1) 로컬 드래프트 갱신
@@ -2196,6 +2197,7 @@ export function AutoTradingSettingsForm() {
                     // Raw 저장으로 즉시 보존(정규화 우회)
                     updateIndicatorsRaw({ type: 'entry', direction: dir }, toNormalizedCompatIndicatorConditions(next));
                   }}
+                  preview={{ symbol: previewSymbol, interval: previewInterval as any, direction: dir }}
                 />
                 </div>
               </div>
