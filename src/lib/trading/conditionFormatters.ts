@@ -181,9 +181,22 @@ export function formatStatusCondition(node: StatusLeafNode): string {
 
   const label = labels[node.metric] || node.metric;
   const comp = formatComparator(node.comparator);
-  const unit = node.unit || '';
 
-  return `${label} ${comp} ${node.value}${unit}`;
+  // unit에 따라 표시 형식 변경
+  let valueText = '';
+  if (node.unit === 'percent') {
+    valueText = `${node.value}%`;
+  } else if (node.unit === 'USDT' || node.unit === 'USDC') {
+    valueText = `${node.value} ${node.unit}`;
+  } else if (node.unit === 'count') {
+    valueText = `${node.value}회`;
+  } else if (node.unit === 'days') {
+    valueText = `${node.value}일`;
+  } else {
+    valueText = String(node.value);
+  }
+
+  return `${label} ${comp} ${valueText}`;
 }
 
 /**
