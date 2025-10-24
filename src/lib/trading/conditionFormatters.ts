@@ -81,10 +81,51 @@ export function formatIndicatorEntry(indicator: IndicatorEntry): string {
 }
 
 /**
+ * 지표 세부값을 한글로 변환
+ */
+function formatMetric(type: string, metric?: string): string {
+  if (!metric) return '';
+
+  const metricMap: Record<string, Record<string, string>> = {
+    bollinger: {
+      upper: '상단',
+      middle: '중간',
+      lower: '하단'
+    },
+    macd: {
+      macd: 'MACD',
+      signal: 'Signal',
+      histogram: 'Histogram'
+    },
+    dmi: {
+      diplus: 'DI+',
+      diminus: 'DI-',
+      adx: 'ADX'
+    }
+  };
+
+  return metricMap[type]?.[metric] || metric;
+}
+
+/**
  * 지표 조건 노드를 읽기 쉬운 텍스트로 변환
  */
 export function formatIndicatorCondition(node: IndicatorLeafNode): string {
-  const indicatorText = formatIndicatorEntry(node.indicator);
+  let indicatorText = formatIndicatorEntry(node.indicator);
+
+  // 지표 세부값 추가 (예: 볼린저밴드 상단)
+  if (node.metric) {
+    const metricText = formatMetric(node.indicator.type, node.metric);
+    if (metricText) {
+      indicatorText += ` ${metricText}`;
+    }
+  }
+
+  // 캔들 참조 추가 (현재/이전)
+  if (node.reference) {
+    const refMap = { current: '현재', previous: '이전' };
+    indicatorText = `${refMap[node.reference] || node.reference} ${indicatorText}`;
+  }
 
   if (node.comparison.kind === 'none') {
     return indicatorText;
@@ -107,11 +148,21 @@ export function formatIndicatorCondition(node: IndicatorLeafNode): string {
     };
     const field = fieldMap[node.comparison.field] || node.comparison.field;
     const ref = refMap[node.comparison.reference] || node.comparison.reference;
-    return `${ref} ${field} ${formatComparator(node.comparison.comparator)} ${indicatorText}`;
+    return `${indicatorText} ${formatComparator(node.comparison.comparator)} ${ref} ${field}`;
   }
 
   if (node.comparison.kind === 'indicator') {
-    return `${indicatorText} ${formatComparator(node.comparison.comparator)} [다른 지표]`;
+    // 비교 대상 지표의 metric도 표시
+    let targetText = '[다른 지표]';
+    if (node.comparison.metric) {
+      // 대상 지표 타입을 알 수 없으므로 일단 원본 표시
+      targetText = `[지표 ${node.comparison.metric}]`;
+    }
+    if (node.comparison.reference) {
+      const refMap = { current: '현재', previous: '이전' };
+      targetText = `${refMap[node.comparison.reference] || node.comparison.reference} ${targetText}`;
+    }
+    return `${indicatorText} ${formatComparator(node.comparison.comparator)} ${targetText}`;
   }
 
   return indicatorText;

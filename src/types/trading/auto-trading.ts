@@ -83,6 +83,11 @@ export type DmiCondition = {
   adxVsDi?: DmiAdxVsDi;
 };
 
+// 지표별 세부값 선택 타입
+export type BollingerMetric = 'upper' | 'middle' | 'lower';
+export type MacdMetric = 'macd' | 'signal' | 'histogram';
+export type DmiMetric = 'diplus' | 'diminus' | 'adx';
+
 export type MacdComparison = 'macd_over_signal' | 'macd_under_signal' | null;
 export type MacdHistogramAction = 'increasing' | 'decreasing' | null;
 export type SourcePrice = 'open' | 'high' | 'low' | 'close';
@@ -142,13 +147,25 @@ export type IndicatorEntry<T extends IndicatorKey = IndicatorKey> = {
 export type IndicatorComparisonLeaf =
   | { kind: 'candle'; comparator: ComparisonOperator; field: CandleFieldOption; reference: CandleReference }
   | { kind: 'value'; comparator: ComparisonOperator; value: number }
-  | { kind: 'indicator'; comparator: ComparisonOperator; targetIndicatorId: string };
+  | {
+      kind: 'indicator';
+      comparator: ComparisonOperator;
+      targetIndicatorId: string;
+      // 비교 대상 지표의 세부값 (예: bollinger → upper)
+      metric?: string;
+      // 비교 대상 지표의 캔들 참조 (current/previous)
+      reference?: CandleReference;
+    };
 
 export type IndicatorLeafNode = {
   kind: 'indicator';
   id: string;
   indicator: IndicatorEntry;
   comparison: IndicatorComparisonLeaf | { kind: 'none' };
+  // 현재 지표의 세부값 선택 (예: bollinger → upper/middle/lower)
+  metric?: string;
+  // 현재 지표의 캔들 참조 (current/previous)
+  reference?: CandleReference;
 };
 
 export type CandleLeafNode = {
