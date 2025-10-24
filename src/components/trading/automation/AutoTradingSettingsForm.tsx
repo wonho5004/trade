@@ -2246,10 +2246,9 @@ export function AutoTradingSettingsForm() {
                     }))
                   }
                 />
-                <GroupListPanel
+                <GroupListPanelV2
                   value={ensureIndicators(draft.scaleIn[dir].indicators)}
-                  preview={{ symbol: previewSymbol, symbolInput: previewSymbolInput, onSymbolChange: setPreviewSymbolInput, quote: previewQuote, datalistOptions: previewDatalistOptions, interval: previewInterval as any, direction: dir, indicatorSignals: buildSignals(ensureIndicators(draft.scaleIn[dir].indicators), assumeSignalsOn) as any, assumeSignalsOn, onToggle: setAssumeSignalsOn, onQuoteChange: setPreviewQuote as any }}
-                  groupPreviewInModal={false}
+                  preview={{ symbol: previewSymbol, interval: previewInterval as any, direction: dir }}
                   onChange={(next) => {
                     setDraft((d) => ({
                       ...d,
@@ -2310,9 +2309,9 @@ export function AutoTradingSettingsForm() {
                   value={(draft.exit[dir].currentProfitRate ?? { enabled: false, comparator: 'over', value: 0 }) as any}
                   onChange={(next) => setDraft((d) => ({ ...d, exit: { ...d.exit, [dir]: { ...d.exit[dir], currentProfitRate: next } } }))}
                 />
-                <GroupListPanel
+                <GroupListPanelV2
                   value={ensureIndicators(draft.exit[dir].indicators)}
-                  preview={{ symbol: previewSymbol, symbolInput: previewSymbolInput, onSymbolChange: setPreviewSymbolInput, quote: previewQuote, datalistOptions: previewDatalistOptions, interval: previewInterval as any, direction: dir, indicatorSignals: buildSignals(ensureIndicators(draft.exit[dir].indicators), assumeSignalsOn) as any, assumeSignalsOn, onToggle: setAssumeSignalsOn, onQuoteChange: setPreviewQuote as any, enabledDefault: false }}
+                  preview={{ symbol: previewSymbol, interval: previewInterval as any, direction: dir }}
                   onChange={(next) => {
                     setDraft((d) => ({
                       ...d,
@@ -2394,9 +2393,9 @@ export function AutoTradingSettingsForm() {
               value={(draft.hedgeActivation.currentProfitRate ?? { enabled: false, comparator: 'over', value: 0 }) as any}
               onChange={(next) => setDraft((d) => ({ ...d, hedgeActivation: { ...d.hedgeActivation, currentProfitRate: next } }))}
             />
-            <GroupListPanel
+            <GroupListPanelV2
               value={ensureIndicators(draft.hedgeActivation.indicators)}
-              preview={{ symbol: previewSymbol, symbolInput: previewSymbolInput, onSymbolChange: setPreviewSymbolInput, quote: previewQuote, datalistOptions: previewDatalistOptions, interval: previewInterval as any, direction: 'long', indicatorSignals: buildSignals(ensureIndicators(draft.hedgeActivation.indicators), assumeSignalsOn) as any, assumeSignalsOn, onToggle: setAssumeSignalsOn, onQuoteChange: setPreviewQuote as any }}
+              preview={{ symbol: previewSymbol, interval: previewInterval as any, direction: 'long' }}
               onChange={(next) => {
                 setDraft((d) => ({ ...d, hedgeActivation: { ...d.hedgeActivation, indicators: next } }));
                 updateIndicatorsRaw({ type: 'hedge' }, toNormalizedCompatIndicatorConditions(next));
@@ -2461,9 +2460,9 @@ export function AutoTradingSettingsForm() {
               value={(draft.stopLoss.currentProfitRate ?? { enabled: false, comparator: 'over', value: 0 }) as any}
               onChange={(next) => setDraft((d) => ({ ...d, stopLoss: { ...d.stopLoss, currentProfitRate: next } }))}
             />
-            <GroupListPanel
+            <GroupListPanelV2
               value={ensureIndicators(draft.stopLoss.stopLossLine.indicators)}
-              preview={{ symbol: previewSymbol, symbolInput: previewSymbolInput, onSymbolChange: setPreviewSymbolInput, quote: previewQuote, datalistOptions: previewDatalistOptions, interval: previewInterval as any, direction: 'long', indicatorSignals: buildSignals(ensureIndicators(draft.stopLoss.stopLossLine.indicators), assumeSignalsOn) as any, assumeSignalsOn, onToggle: setAssumeSignalsOn, onQuoteChange: setPreviewQuote as any }}
+              preview={{ symbol: previewSymbol, interval: previewInterval as any, direction: 'long' }}
               onChange={(next) => {
                 setDraft((d) => ({
                   ...d,
