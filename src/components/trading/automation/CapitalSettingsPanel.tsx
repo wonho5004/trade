@@ -521,11 +521,10 @@ export function CapitalSettingsPanel({ capital, symbolCount, manualSymbols, leve
 
       {/* Allocation bar and per-symbol cards removed to reduce duplication */}
 
-      <div id="scale-settings" className="rounded border border-zinc-800 bg-zinc-950/60 p-3">
+      {/* 추가 매수 금액 설정 */}
+      <div id="scale-amount-settings" className="rounded border border-zinc-800 bg-zinc-950/60 p-3">
         <div className="mb-1 font-medium text-zinc-100">추가 매수 금액 설정</div>
-        <div className="grid gap-4 md:grid-cols-2">
-          {/* Left: 금액 설정 */}
-          <div className="space-y-2">
+        <div className="space-y-2">
             <Segmented
               ariaLabel="scale-in budget mode"
               value={capital.scaleInBudget.mode}
@@ -616,11 +615,13 @@ export function CapitalSettingsPanel({ capital, symbolCount, manualSymbols, leve
                 ) : null}
               </div>
             ) : null}
-          </div>
-          {/* Right: 추가 매수 한도 설정 (세그먼트 + 해당 입력만) */}
-          <div className="space-y-2">
-            <div className="mb-1 font-medium text-zinc-100">추가 매수 한도 설정 <InfoTip title="추가 매수에 사용할 총 한도를 제한합니다." /></div>
-            {(() => {
+        </div>
+      </div>
+
+      {/* 추가 매수 한도 설정 */}
+      <div id="scale-limit-settings" className="rounded border border-zinc-800 bg-zinc-950/60 p-3">
+        <div className="mb-1 font-medium text-zinc-100">추가 매수 한도 설정 <InfoTip title="추가 매수에 사용할 총 한도를 제한합니다." /></div>
+        {(() => {
               const mode: 'balance' | 'initial' | 'count' | 'amount' | 'unlimited' = capital.scaleInLimit.unlimited
                 ? 'unlimited'
                 : capital.scaleInLimit.balance.enabled
@@ -747,51 +748,23 @@ export function CapitalSettingsPanel({ capital, symbolCount, manualSymbols, leve
                 </div>
               );
             })()}
-          </div>
-        </div>
       </div>
 
       <div className="rounded border border-zinc-800 bg-zinc-950/60 p-3">
-        <div className="mb-1 flex items-center justify-between">
+        <div className="mb-2 flex items-center justify-between">
           <div className="font-medium text-zinc-100">매수 예외 조건</div>
-          <button type="button" className="rounded border border-zinc-700 px-2 py-0.5 text-[11px] text-zinc-300" onClick={() => setShowExceptions(true)}>예외 조건 선택</button>
+          <button type="button" className="rounded border border-zinc-700 px-2 py-0.5 text-[11px] text-zinc-300 hover:border-blue-500/60 hover:text-blue-200" onClick={() => setShowExceptions(true)}>예외 조건 선택</button>
         </div>
-        <div className="space-y-2 text-[12px]">
-          <div className="text-zinc-400">
-            {(() => {
-              const exc: any = (capital as any).exceptions ?? {};
-              const picked: string[] = [];
-              if (exc.totalVsWalletEnabled) picked.push(`Total≤Wallet ${exc.totalVsWalletPct ?? 0}%`);
-              if (exc.freeVsWalletEnabled) picked.push(`Free≤Wallet ${exc.freeVsWalletPct ?? 0}%`);
-              if (exc.totalBelowEnabled) picked.push(`Total≤${exc.totalBelowAmount ?? 0} ${quote}`);
-              if (exc.freeBelowEnabled) picked.push(`Free≤${exc.freeBelowAmount ?? 0} ${quote}`);
-              return picked.length > 0 ? picked.join(' · ') : '선택된 예외 없음';
-            })()}
-          </div>
-          <label className="flex items-center gap-2">
-            <input type="checkbox" className="h-4 w-4" checked={Boolean((capital as any).exceptions?.totalVsWalletEnabled)} onChange={(e) => onChange({ ...(capital as any), exceptions: { ...((capital as any).exceptions ?? {}), totalVsWalletEnabled: e.target.checked } as any })} />
-            <span>Total 잔고가 Wallet 보다</span>
-            <input type="number" min={1} max={100} className="w-16 rounded border border-zinc-700 bg-zinc-900 px-2 py-1" value={Number((capital as any).exceptions?.totalVsWalletPct ?? 50)} onChange={(e) => onChange({ ...(capital as any), exceptions: { ...((capital as any).exceptions ?? {}), totalVsWalletPct: Math.max(1, Math.min(100, Math.round(Number(e.currentTarget.value) || 0))) } as any })} />
-            <span>% 이하</span>
-          </label>
-          <label className="flex items-center gap-2">
-            <input type="checkbox" className="h-4 w-4" checked={Boolean((capital as any).exceptions?.freeVsWalletEnabled)} onChange={(e) => onChange({ ...(capital as any), exceptions: { ...((capital as any).exceptions ?? {}), freeVsWalletEnabled: e.target.checked } as any })} />
-            <span>Free 잔고가 Wallet 보다</span>
-            <input type="number" min={1} max={100} className="w-16 rounded border border-zinc-700 bg-zinc-900 px-2 py-1" value={Number((capital as any).exceptions?.freeVsWalletPct ?? 50)} onChange={(e) => onChange({ ...(capital as any), exceptions: { ...((capital as any).exceptions ?? {}), freeVsWalletPct: Math.max(1, Math.min(100, Math.round(Number(e.currentTarget.value) || 0))) } as any })} />
-            <span>% 이하</span>
-          </label>
-          <label className="flex items-center gap-2">
-            <input type="checkbox" className="h-4 w-4" checked={Boolean((capital as any).exceptions?.totalBelowEnabled)} onChange={(e) => onChange({ ...(capital as any), exceptions: { ...((capital as any).exceptions ?? {}), totalBelowEnabled: e.target.checked } as any })} />
-            <span>Total 잔고</span>
-            <input type="number" min={0} className="w-24 rounded border border-zinc-700 bg-zinc-900 px-2 py-1" value={Number((capital as any).exceptions?.totalBelowAmount ?? 0)} onChange={(e) => onChange({ ...(capital as any), exceptions: { ...((capital as any).exceptions ?? {}), totalBelowAmount: Math.max(0, Number(e.currentTarget.value) || 0) } as any })} />
-            <span>{quote} 이하</span>
-          </label>
-          <label className="flex items-center gap-2">
-            <input type="checkbox" className="h-4 w-4" checked={Boolean((capital as any).exceptions?.freeBelowEnabled)} onChange={(e) => onChange({ ...(capital as any), exceptions: { ...((capital as any).exceptions ?? {}), freeBelowEnabled: e.target.checked } as any })} />
-            <span>Free 잔고</span>
-            <input type="number" min={0} className="w-24 rounded border border-zinc-700 bg-zinc-900 px-2 py-1" value={Number((capital as any).exceptions?.freeBelowAmount ?? 0)} onChange={(e) => onChange({ ...(capital as any), exceptions: { ...((capital as any).exceptions ?? {}), freeBelowAmount: Math.max(0, Number(e.currentTarget.value) || 0) } as any })} />
-            <span>{quote} 이하</span>
-          </label>
+        <div className="text-[12px] text-zinc-400">
+          {(() => {
+            const exc: any = (capital as any).exceptions ?? {};
+            const picked: string[] = [];
+            if (exc.totalVsWalletEnabled) picked.push(`Total≤Wallet ${exc.totalVsWalletPct ?? 0}%`);
+            if (exc.freeVsWalletEnabled) picked.push(`Free≤Wallet ${exc.freeVsWalletPct ?? 0}%`);
+            if (exc.totalBelowEnabled) picked.push(`Total≤${exc.totalBelowAmount ?? 0} ${quote}`);
+            if (exc.freeBelowEnabled) picked.push(`Free≤${exc.freeBelowAmount ?? 0} ${quote}`);
+            return picked.length > 0 ? picked.join(' · ') : '선택된 예외 없음';
+          })()}
         </div>
       </div>
 
@@ -835,12 +808,14 @@ export function CapitalSettingsPanel({ capital, symbolCount, manualSymbols, leve
           {(['long','short'] as const).map((dir) => {
             const cfg = (capital.hedgeBudget?.[dir] ?? { mode: 'position_percent', percentage: 100 }) as any;
             const setDir = (patch: any) => onChange({ ...capital, hedgeBudget: { ...(capital.hedgeBudget ?? ({} as any)), separateByDirection: Boolean(capital.hedgeBudget?.separateByDirection), long: dir==='long' ? { ...cfg, ...patch } : (capital.hedgeBudget?.long ?? { mode: 'position_percent', percentage: 100 }), short: dir==='short' ? { ...cfg, ...patch } : (capital.hedgeBudget?.short ?? { mode: 'position_percent', percentage: 100 }) } as any });
-            const title = dir === 'long' ? '롱' : '숏';
+            const title = capital.hedgeBudget?.separateByDirection
+              ? (dir === 'long' ? '롱 매수 금액 설정' : '숏 매수 금액 설정')
+              : '매수 금액 설정';
             const show = capital.hedgeBudget?.separateByDirection || dir === 'long';
             if (!show) return <div key={dir} />;
             return (
               <div key={dir} className="space-y-2 rounded border border-zinc-800 bg-zinc-950/40 p-2">
-                <div className="font-medium text-zinc-200">{title} 매수 금액</div>
+                <div className="font-medium text-zinc-200">{title}</div>
                 <div className="flex flex-wrap items-center gap-2">
                   <label className="inline-flex items-center gap-1"><input type="radio" name={`hedge-${dir}-mode`} checked={cfg.mode==='usdt'} onChange={() => setDir({ mode: 'usdt' })} /> 직접입력</label>
                   <label className="inline-flex items-center gap-1"><input type="radio" name={`hedge-${dir}-mode`} checked={cfg.mode==='balance_percentage'} onChange={() => setDir({ mode: 'balance_percentage', perSymbol: false })} /> 잔고기준(총)</label>

@@ -568,24 +568,44 @@ export function SymbolsPickerPanel({
 
         {/* 심볼 목록 */}
         <div className="rounded border border-zinc-800 bg-zinc-950/60">
-          <div className="flex items-center justify-between border-b border-zinc-800 px-2 py-1 text-[11px] text-zinc-400">
-            <span className="flex items-center gap-2">
-              <span>심볼 목록</span>
-              {/* 표시 순서 조정(간단 이동 버튼) */}
-              <span className="hidden sm:inline text-zinc-500">· 표시 순서</span>
-              {order.map((k) => (
-                <span key={`ctrl-${k}`} className="hidden sm:inline-flex items-center gap-1 rounded border border-zinc-700 px-1.5 py-0.5 text-[10px] text-zinc-300">
-                  {labels[k]}
-                  <button className="rounded border border-zinc-700 px-1 text-zinc-400" onClick={() => { move(k, 'left'); }} aria-label={`${labels[k]} 왼쪽으로`}>
-                    ◀
-                  </button>
-                  <button className="rounded border border-zinc-700 px-1 text-zinc-400" onClick={() => { move(k, 'right'); }} aria-label={`${labels[k]} 오른쪽으로`}>
-                    ▶
-                  </button>
-                </span>
-              ))}
-            </span>
-            <span>{filteredItems.length} 종목</span>
+          <div className="border-b border-zinc-800 px-3 py-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="text-sm font-medium text-zinc-200">심볼 목록</span>
+
+              {/* 표시 순서 조정 - 개선된 UI */}
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] text-zinc-500">컬럼 순서:</span>
+                <div className="flex items-center gap-1">
+                  {order.map((k, idx) => (
+                    <div key={`ctrl-${k}`} className="flex items-center gap-0.5 rounded border border-zinc-700 bg-zinc-900 px-2 py-1">
+                      <span className="text-[11px] text-zinc-300">{labels[k]}</span>
+                      <div className="flex gap-0.5 ml-1">
+                        <button
+                          className="rounded px-1 text-[10px] text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-zinc-400"
+                          onClick={() => { move(k, 'left'); }}
+                          disabled={idx === 0}
+                          aria-label={`${labels[k]} 왼쪽으로`}
+                          title="왼쪽으로 이동"
+                        >
+                          ◀
+                        </button>
+                        <button
+                          className="rounded px-1 text-[10px] text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-zinc-400"
+                          onClick={() => { move(k, 'right'); }}
+                          disabled={idx === order.length - 1}
+                          aria-label={`${labels[k]} 오른쪽으로`}
+                          title="오른쪽으로 이동"
+                        >
+                          ▶
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <span className="text-[11px] text-zinc-400">{filteredItems.length} 종목</span>
+            </div>
           </div>
           {/* 드래그 리사이즈 안내 (모바일 숨김) */}
           <div className="hidden border-b border-zinc-800 px-2 py-1 text-[10px] text-zinc-500 sm:block">컬럼 헤더 오른쪽 경계를 드래그해 너비를 조정할 수 있습니다.</div>
