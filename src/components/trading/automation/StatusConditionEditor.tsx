@@ -3,6 +3,8 @@
 import React from 'react';
 import type { StatusMetric, StatusUnit, ComparisonOperator } from '@/types/trading/auto-trading';
 import { ComparatorSelector } from './ComparatorSelector';
+import { HelpTooltip } from '@/components/common/HelpTooltip';
+import { getHelpContent } from '@/content/help-content';
 
 interface StatusConditionEditorProps {
   metric: StatusMetric;
@@ -68,8 +70,26 @@ export const StatusConditionEditor: React.FC<StatusConditionEditorProps> = ({
     onUnitChange(getDefaultUnit(newMetric));
   };
 
+  const helpData = getHelpContent('status-conditions');
+
   return (
     <div className={`space-y-4 ${className}`}>
+      {/* 헤더 (도움말 추가) */}
+      {helpData && (
+        <div className="flex items-center gap-2 pb-2 border-b border-zinc-700">
+          <h4 className="text-sm font-medium text-zinc-200">현재 상태 조건 설정</h4>
+          <HelpTooltip
+            id={helpData.id}
+            title={helpData.title}
+            content={helpData.summary}
+            details={helpData.details}
+            examples={helpData.examples}
+            warnings={helpData.warnings}
+            relatedTopics={helpData.relatedTopics}
+          />
+        </div>
+      )}
+
       {/* 조건 타입 선택 */}
       <div>
         <label className="mb-1 block text-xs font-medium text-zinc-300">

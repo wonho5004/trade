@@ -2,6 +2,8 @@
 
 import React, { useState } from 'react';
 import type { MarginBasis } from '@/types/trading/auto-trading';
+import { HelpTooltip } from '@/components/common/HelpTooltip';
+import { getHelpContent } from '@/content/help-content';
 
 type BuyAmountMode = 'usdt_fixed' | 'per_symbol_percent' | 'total_percent' | 'position_percent';
 
@@ -149,9 +151,24 @@ export const BuyAmountSettings: React.FC<BuyAmountSettingsProps> = ({
     ? (value.basis === 'total' ? actualBalance.total : value.basis === 'free' ? actualBalance.free : actualBalance.wallet)
     : estimatedBalance;
 
+  const helpData = getHelpContent('buy-amount');
+
   return (
     <div className={`space-y-4 ${className}`}>
-      <h3 className="text-sm font-medium text-zinc-200">{label}</h3>
+      <div className="flex items-center gap-2">
+        <h3 className="text-sm font-medium text-zinc-200">{label}</h3>
+        {helpData && (
+          <HelpTooltip
+            id={helpData.id}
+            title={helpData.title}
+            content={helpData.summary}
+            details={helpData.details}
+            examples={helpData.examples}
+            warnings={helpData.warnings}
+            relatedTopics={helpData.relatedTopics}
+          />
+        )}
+      </div>
 
       {/* 모드 선택 */}
       <div>
