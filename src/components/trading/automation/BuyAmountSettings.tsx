@@ -46,6 +46,13 @@ export const BuyAmountSettings: React.FC<BuyAmountSettingsProps> = ({
   className = ''
 }) => {
   const [showBalanceFetch, setShowBalanceFetch] = useState(false);
+  const [balanceLoading, setBalanceLoading] = useState(false);
+  const [balanceError, setBalanceError] = useState<string | null>(null);
+  const [actualBalance, setActualBalance] = useState<{
+    wallet: number;
+    total: number;
+    free: number;
+  } | null>(null);
 
   const handleModeChange = (mode: BuyAmountMode) => {
     onChange({
@@ -86,12 +93,12 @@ export const BuyAmountSettings: React.FC<BuyAmountSettingsProps> = ({
 
     if (value.mode === 'per_symbol_percent') {
       // 총 잔고 / 거래종목수 * 입력값%
-      return (estimatedBalance / Math.max(1, symbolCount)) * ((value.percentage || 0) / 100);
+      return (effectiveBalance / Math.max(1, symbolCount)) * ((value.percentage || 0) / 100);
     }
 
     if (value.mode === 'total_percent') {
       // 총 잔고 * 입력값%
-      return estimatedBalance * ((value.percentage || 0) / 100);
+      return effectiveBalance * ((value.percentage || 0) / 100);
     }
 
     if (value.mode === 'position_percent') {
@@ -103,6 +110,44 @@ export const BuyAmountSettings: React.FC<BuyAmountSettingsProps> = ({
   };
 
   const estimatedAmount = calculateEstimatedAmount();
+
+  // 실제 잔고 조회
+  const fetchActualBalance = async () => {
+    setBalanceLoading(true);
+    setBalanceError(null);
+    try {
+      const res = await fetch('/api/trading/binance/account');
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.message || '잔고 조회 실패');
+      }
+      const data = await res.json();
+      if (!data.ok || !data.account) {
+        throw new Error('잔고 정보를 가져올 수 없습니다.');
+      }
+
+      const quote = value.asset || 'USDT';
+      const wallet = quote === 'USDT' ? data.account.walletUSDT : data.account.walletUSDC;
+      const total = quote === 'USDT' ? data.account.totalUSDT : data.account.totalUSDC;
+      const free = quote === 'USDT' ? data.account.freeUSDT : data.account.freeUSDC;
+
+      setActualBalance({
+        wallet: wallet || 0,
+        total: total || 0,
+        free: free || 0
+      });
+      setShowBalanceFetch(false);
+    } catch (err) {
+      setBalanceError(err instanceof Error ? err.message : '알 수 없는 오류');
+    } finally {
+      setBalanceLoading(false);
+    }
+  };
+
+  // 실제 잔고 기준으로 계산
+  const effectiveBalance = actualBalance
+    ? (value.basis === 'total' ? actualBalance.total : value.basis === 'free' ? actualBalance.free : actualBalance.wallet)
+    : estimatedBalance;
 
   return (
     <div className={`space-y-4 ${className}`}>
@@ -243,22 +288,57 @@ export const BuyAmountSettings: React.FC<BuyAmountSettingsProps> = ({
         </div>
       )}
 
+      {/* 실제 잔고 정보 */}
+      {actualBalance && (
+        <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3">
+          <div className="mb-2 flex items-center justify-between">
+            <span className="text-xs font-medium text-emerald-300">💰 실제 잔고 ({value.asset || 'USDT'})</span>
+            <button
+              onClick={() => setActualBalance(null)}
+              className="text-xs text-emerald-400 hover:text-emerald-300"
+            >
+              예상값으로 되돌리기
+            </button>
+          </div>
+          <div className="space-y-1 text-xs text-emerald-200">
+            <div className="flex justify-between">
+              <span>Wallet Balance:</span>
+              <span className="font-mono">{actualBalance.wallet.toFixed(2)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span>Total Balance:</span>
+              <span className="font-mono">{actualBalance.total.toFixed(2)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span>Available Balance:</span>
+              <span className="font-mono">{actualBalance.free.toFixed(2)}</span>
+            </div>
+            <div className="mt-2 border-t border-emerald-500/30 pt-2 flex justify-between font-bold">
+              <span>사용 기준 ({value.basis || 'wallet'}):</span>
+              <span className="font-mono">{effectiveBalance.toFixed(2)}</span>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 예상 주문 금액 */}
       <div className="rounded-lg border border-blue-500/30 bg-blue-500/10 p-3">
         <div className="flex items-center justify-between">
-          <span className="text-xs font-medium text-blue-300">예상 주문 금액</span>
+          <span className="text-xs font-medium text-blue-300">
+            {actualBalance ? '실제 주문 금액' : '예상 주문 금액'}
+          </span>
           <span className="text-sm font-bold text-blue-200">
             {estimatedAmount.toFixed(2)} {value.asset || 'USDT'}
           </span>
         </div>
         {value.mode === 'per_symbol_percent' && (
           <p className="mt-1 text-xs text-blue-300">
-            계산: {estimatedBalance.toFixed(2)} ÷ {symbolCount} × {value.percentage}% = {estimatedAmount.toFixed(2)}
+            계산: {effectiveBalance.toFixed(2)} ÷ {symbolCount} × {value.percentage}% = {estimatedAmount.toFixed(2)}
           </p>
         )}
         {value.mode === 'total_percent' && (
           <p className="mt-1 text-xs text-blue-300">
-            계산: {estimatedBalance.toFixed(2)} × {value.percentage}% = {estimatedAmount.toFixed(2)}
+            계산: {effectiveBalance.toFixed(2)} × {value.percentage}% = {estimatedAmount.toFixed(2)}
           </p>
         )}
       </div>
@@ -281,14 +361,31 @@ export const BuyAmountSettings: React.FC<BuyAmountSettingsProps> = ({
         </p>
       </div>
 
-      {/* 잔고 조회 버튼 (향후 구현) */}
-      <button
-        type="button"
-        onClick={() => setShowBalanceFetch(true)}
-        className="w-full rounded border border-emerald-600 bg-emerald-600/10 px-4 py-2 text-sm font-medium text-emerald-300 hover:bg-emerald-600/20 transition-colors"
-      >
-        💰 실제 잔고 조회 (예상 → 실제)
-      </button>
+      {/* 잔고 조회 버튼 */}
+      <div>
+        <button
+          type="button"
+          onClick={fetchActualBalance}
+          disabled={balanceLoading || !!actualBalance}
+          className="w-full rounded border border-emerald-600 bg-emerald-600/10 px-4 py-2 text-sm font-medium text-emerald-300 hover:bg-emerald-600/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {balanceLoading ? (
+            <span className="flex items-center justify-center gap-2">
+              <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-solid border-emerald-300 border-r-transparent" />
+              잔고 조회 중...
+            </span>
+          ) : actualBalance ? (
+            '✅ 실제 잔고 적용됨'
+          ) : (
+            '💰 실제 잔고 조회 (예상 → 실제)'
+          )}
+        </button>
+        {balanceError && (
+          <div className="mt-2 rounded border border-red-500/30 bg-red-500/10 p-2 text-xs text-red-300">
+            <strong>오류:</strong> {balanceError}
+          </div>
+        )}
+      </div>
 
       {/* 도움말 */}
       <div className="rounded-lg border border-green-500/30 bg-green-500/10 p-3">
