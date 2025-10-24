@@ -175,8 +175,17 @@ export type CandleLeafNode = {
 };
 
 // Status condition leaf: describes runtime position/account metrics
-export type StatusMetric = 'profitRate' | 'margin' | 'buyCount' | 'entryAge';
-export type StatusUnit = 'percent' | 'USDT' | 'USDC' | 'count' | 'days';
+export type StatusMetric =
+  | 'profitRate'        // 현재 수익률 (%)
+  | 'margin'            // 현재 마진 금액 (USDT)
+  | 'buyCount'          // 매수 횟수
+  | 'entryAge'          // 포지션 진입 후 경과 시간
+  | 'walletBalance'     // 잔고 (USDT)
+  | 'initialMarginRate' // 초기 마진 대비 현재 마진 비율 (%)
+  | 'unrealizedPnl'     // 미실현 손익 (USDT)
+  | 'positionSize';     // 포지션 크기 (USDT)
+
+export type StatusUnit = 'percent' | 'USDT' | 'USDC' | 'count' | 'days' | 'hours' | 'minutes';
 
 export type StatusLeafNode = {
   kind: 'status';

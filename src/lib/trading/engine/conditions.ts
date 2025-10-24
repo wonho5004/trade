@@ -19,10 +19,16 @@ export type EvaluationContext = {
   symbol: string;
   direction: PositionDirection;
   // Runtime status metrics
-  profitRatePct?: number; // e.g., 3.2
-  margin?: { asset: 'USDT' | 'USDC'; value: number };
-  buyCount?: number;
-  entryAgeDays?: number; // age in days (fractional ok)
+  profitRatePct?: number; // e.g., 3.2 (현재 수익률 %)
+  margin?: { asset: 'USDT' | 'USDC'; value: number }; // 현재 마진 금액
+  buyCount?: number; // 매수 횟수
+  entryAgeDays?: number; // 포지션 진입 후 경과 시간 (days, fractional ok)
+  entryAgeHours?: number; // 포지션 진입 후 경과 시간 (hours)
+  entryAgeMinutes?: number; // 포지션 진입 후 경과 시간 (minutes)
+  walletBalance?: { asset: 'USDT' | 'USDC'; value: number }; // 잔고
+  initialMarginRatePct?: number; // 초기 마진 대비 현재 마진 비율 (%)
+  unrealizedPnl?: { asset: 'USDT' | 'USDC'; value: number }; // 미실현 손익
+  positionSize?: { asset: 'USDT' | 'USDC'; value: number }; // 포지션 크기
   candleCurrent?: Candle;
   candlePrevious?: Candle;
 };
@@ -53,25 +59,66 @@ const cmp = (left: number, op: 'over' | 'under' | 'eq' | 'lte' | 'gte', right: n
 const evalStatus = (node: StatusLeafNode, ctx: EvaluationContext): boolean => {
   const { metric, comparator, value, unit } = node;
   if (!comparator || comparator === 'none') return false;
+
   if (metric === 'profitRate') {
     const v = Number(ctx.profitRatePct ?? NaN);
     if (unit && unit !== 'percent') return false;
     return cmp(v, comparator, value);
   }
+
   if (metric === 'margin') {
     const cur = ctx.margin;
     if (!cur) return false;
     if (unit && cur.asset !== unit) return false;
     return cmp(cur.value ?? NaN, comparator, value);
   }
+
   if (metric === 'buyCount') {
     const v = Number(ctx.buyCount ?? NaN);
     return cmp(v, comparator, value);
   }
+
   if (metric === 'entryAge') {
-    const v = Number(ctx.entryAgeDays ?? NaN);
+    // 단위에 따라 적절한 컨텍스트 값 사용
+    let v: number;
+    if (unit === 'minutes') {
+      v = Number(ctx.entryAgeMinutes ?? NaN);
+    } else if (unit === 'hours') {
+      v = Number(ctx.entryAgeHours ?? NaN);
+    } else {
+      // default to days
+      v = Number(ctx.entryAgeDays ?? NaN);
+    }
     return cmp(v, comparator, value);
   }
+
+  if (metric === 'walletBalance') {
+    const cur = ctx.walletBalance;
+    if (!cur) return false;
+    if (unit && cur.asset !== unit) return false;
+    return cmp(cur.value ?? NaN, comparator, value);
+  }
+
+  if (metric === 'initialMarginRate') {
+    const v = Number(ctx.initialMarginRatePct ?? NaN);
+    if (unit && unit !== 'percent') return false;
+    return cmp(v, comparator, value);
+  }
+
+  if (metric === 'unrealizedPnl') {
+    const cur = ctx.unrealizedPnl;
+    if (!cur) return false;
+    if (unit && cur.asset !== unit) return false;
+    return cmp(cur.value ?? NaN, comparator, value);
+  }
+
+  if (metric === 'positionSize') {
+    const cur = ctx.positionSize;
+    if (!cur) return false;
+    if (unit && cur.asset !== unit) return false;
+    return cmp(cur.value ?? NaN, comparator, value);
+  }
+
   return false;
 };
 
