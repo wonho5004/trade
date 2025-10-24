@@ -63,19 +63,7 @@ export function BollingerEditor({ value, onChange }: CommonProps<BollingerCondit
           <option value="none">없음</option>
         </select>
       </label>
-      <label className="flex flex-col gap-1 text-xs text-zinc-300">
-        <span>터치 허용(%)</span>
-        <input
-          type="number"
-          min={0}
-          max={5}
-          step={0.01}
-          value={value.touchTolerancePct ?? 0.2}
-          onChange={(e) => onChange({ ...value, touchTolerancePct: Math.max(0, Number(e.target.value) || 0) })}
-          className="rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs text-zinc-100"
-        />
-      </label>
-      {/* 액션 항목 제거: 비교 기준에서 연산 수행 */}
+      {/* 액션 항목 제거: 비교연산자로 대체됨 */}
     </div>
   );
 }

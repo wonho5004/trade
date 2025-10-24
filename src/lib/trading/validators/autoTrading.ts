@@ -131,15 +131,7 @@ function validateStatusNode(node: StatusLeafNode, label: string): string[] {
   return errs;
 }
 
-function validateMaCombination(config: MaCondition): string[] {
-  const a = new Set(config.actions);
-  const errs: string[] = [];
-  if (a.has('break_above') && (a.has('break_below') || a.has('stay_below'))) errs.push('MA: 상단 돌파는 하단 관련 액션과 함께 사용할 수 없습니다.');
-  if (a.has('break_below') && (a.has('break_above') || a.has('stay_above'))) errs.push('MA: 하단 돌파는 상단 관련 액션과 함께 사용할 수 없습니다.');
-  if (a.has('stay_above') && (a.has('stay_below') || a.has('break_below'))) errs.push('MA: 상단 유지는 하단 관련 액션과 함께 사용할 수 없습니다.');
-  if (a.has('stay_below') && (a.has('stay_above') || a.has('break_above'))) errs.push('MA: 하단 유지는 상단 관련 액션과 함께 사용할 수 없습니다.');
-  return errs;
-}
+// MA validation removed - now using comparison operators instead of actions
 
 function validateRsiCombination(config: RsiCondition): string[] {
   const a = new Set(config.actions);
@@ -166,7 +158,7 @@ export function validateIndicatorConditions(
   for (const node of indicators) {
     const type = node.indicator.type;
     const config: any = node.indicator.config;
-    if (type === 'ma') errs.push(...validateMaCombination(config as MaCondition));
+    // MA validation removed - now using comparison operators
     if (type === 'rsi') errs.push(...validateRsiCombination(config as RsiCondition));
     if (node.comparison.kind === 'indicator' && !ids.has(node.comparison.targetIndicatorId)) {
       errs.push(`${label}: 비교 대상을 찾을 수 없습니다.`);

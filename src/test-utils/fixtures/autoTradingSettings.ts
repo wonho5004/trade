@@ -41,8 +41,7 @@ const withIndicators = <T extends AutoTradingSettings>(settings: T, options: { d
   entry.indicators.entries = [
     createIndicatorFixture('ma', {
       enabled: true,
-      period: direction === 'long' ? 20 : 34,
-      actions: [direction === 'long' ? 'break_above' : 'break_below']
+      period: direction === 'long' ? 20 : 34
     }),
     createIndicatorFixture(
       'rsi',
@@ -66,8 +65,7 @@ const withIndicators = <T extends AutoTradingSettings>(settings: T, options: { d
   scaleIn.indicators.entries = [
     createIndicatorFixture('ma', {
       enabled: true,
-      period: direction === 'long' ? 30 : 40,
-      actions: [direction === 'long' ? 'stay_above' : 'stay_below']
+      period: direction === 'long' ? 30 : 40
     })
   ];
 
@@ -80,8 +78,7 @@ const withIndicators = <T extends AutoTradingSettings>(settings: T, options: { d
   exit.indicators.entries = [
     createIndicatorFixture('ma', {
       enabled: true,
-      period: direction === 'long' ? 12 : 18,
-      actions: [direction === 'long' ? 'break_below' : 'break_above']
+      period: direction === 'long' ? 12 : 18
     })
   ];
 
@@ -121,8 +118,7 @@ export const createLongOnlySettings = (): AutoTradingSettings => {
   settings.stopLoss.stopLossLine.indicators.entries = [
     createIndicatorFixture('ma', {
       enabled: true,
-      period: 21,
-      actions: ['break_below']
+      period: 21
     })
   ];
 
@@ -156,8 +152,7 @@ export const createShortOnlySettings = (): AutoTradingSettings => {
   settings.stopLoss.stopLossLine.indicators.entries = [
     createIndicatorFixture('ma', {
       enabled: true,
-      period: 55,
-      actions: ['break_above']
+      period: 55
     })
   ];
 
@@ -194,8 +189,7 @@ export const createHedgeBalancedSettings = (): AutoTradingSettings => {
   settings.hedgeActivation.indicators.entries = [
     createIndicatorFixture('ma', {
       enabled: true,
-      period: 34,
-      actions: ['stay_above', 'stay_below']
+      period: 34
     })
   ];
 
@@ -214,8 +208,7 @@ export const createHedgeBalancedSettings = (): AutoTradingSettings => {
   settings.stopLoss.stopLossLine.indicators.entries = [
     createIndicatorFixture('ma', {
       enabled: true,
-      period: 34,
-      actions: ['stay_above', 'stay_below']
+      period: 34
     })
   ];
 

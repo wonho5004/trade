@@ -37,7 +37,6 @@ export type CandleCondition = {
 };
 
 export type BollingerBand = 'upper' | 'middle' | 'lower' | 'none';
-export type BollingerAction = 'break_above' | 'break_below' | 'touch' | 'none';
 
 export type BollingerCondition = {
   enabled: boolean;
@@ -45,17 +44,11 @@ export type BollingerCondition = {
   standardDeviation: number;
   offset: number;
   band: BollingerBand;
-  action: BollingerAction;
-  /** 'touch' 판단 허용 오차(%) — 예: 0.2 -> 0.2% */
-  touchTolerancePct?: number;
 };
-
-export type MaAction = 'break_above' | 'break_below' | 'stay_above' | 'stay_below';
 
 export type MaCondition = {
   enabled: boolean;
   period: number;
-  actions: MaAction[];
 };
 
 export type RsiSmoothing = 'sma' | 'ema';

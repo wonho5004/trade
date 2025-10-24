@@ -68,15 +68,12 @@ export const createBollingerCondition = (): IndicatorConfigMap['bollinger'] => (
   length: 20,
   standardDeviation: 2,
   offset: 0,
-  band: 'middle',
-  action: 'touch',
-  touchTolerancePct: 0.2
+  band: 'middle'
 });
 
 export const createMaCondition = (): IndicatorConfigMap['ma'] => ({
   enabled: false,
-  period: 20,
-  actions: []
+  period: 20
 });
 
 export const createRsiCondition = (): IndicatorConfigMap['rsi'] => ({
