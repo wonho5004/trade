@@ -4,7 +4,140 @@ import type { AutoTradingSettings } from '@/types/trading/auto-trading';
  * 설정값을 한글로 표시하는 유틸리티 함수들
  */
 
-// 지표 조건을 한글로 변환
+// 비교 연산자를 한글 기호로 변환
+function formatComparator(comp: string): string {
+  switch (comp) {
+    case 'over': return '>';
+    case 'under': return '<';
+    case 'eq': return '=';
+    case 'gte': return '≥';
+    case 'lte': return '≤';
+    default: return comp;
+  }
+}
+
+// 지표 이름을 한글로 변환
+function formatIndicatorName(type: string, metric?: string): string {
+  switch (type) {
+    case 'rsi':
+      return 'RSI';
+    case 'macd':
+      if (metric === 'macd') return 'MACD';
+      if (metric === 'signal') return 'MACD Signal';
+      if (metric === 'histogram') return 'MACD Histogram';
+      return 'MACD';
+    case 'bollinger':
+      if (metric === 'upper') return 'BB 상단';
+      if (metric === 'lower') return 'BB 하단';
+      if (metric === 'middle') return 'BB 중간';
+      return 'BB';
+    case 'ma':
+      return 'MA';
+    case 'dmi':
+      if (metric === 'diplus') return 'DI+';
+      if (metric === 'diminus') return 'DI-';
+      if (metric === 'adx') return 'ADX';
+      return 'DMI';
+    default:
+      return type.toUpperCase();
+  }
+}
+
+// IndicatorLeafNode를 한글로 변환
+function formatIndicatorLeaf(node: any, indicatorsMap: Map<string, any>): string {
+  if (!node || node.kind !== 'indicator') return '';
+
+  const indicator = node.indicator;
+  if (!indicator) return '';
+
+  const indicatorName = formatIndicatorName(indicator.type, node.metric);
+  const comparison = node.comparison;
+
+  if (!comparison || comparison.kind === 'none') {
+    return indicatorName;
+  }
+
+  if (comparison.kind === 'value') {
+    return `${indicatorName} ${formatComparator(comparison.comparator)} ${comparison.value}`;
+  }
+
+  if (comparison.kind === 'candle') {
+    const field = comparison.field === 'close' ? '종가' : comparison.field === 'open' ? '시가' : comparison.field === 'high' ? '고가' : '저가';
+    return `${indicatorName} ${formatComparator(comparison.comparator)} ${field}`;
+  }
+
+  if (comparison.kind === 'indicator') {
+    const targetIndicator = indicatorsMap.get(comparison.targetIndicatorId);
+    if (targetIndicator) {
+      const targetName = formatIndicatorName(targetIndicator.type, comparison.metric);
+      return `${indicatorName} ${formatComparator(comparison.comparator)} ${targetName}`;
+    }
+    return `${indicatorName} ${formatComparator(comparison.comparator)} [지표]`;
+  }
+
+  return indicatorName;
+}
+
+// ConditionNode를 한글로 변환 (재귀)
+function formatConditionNode(node: any, indicatorsMap: Map<string, any>): string {
+  if (!node) return '';
+
+  if (node.kind === 'indicator') {
+    return formatIndicatorLeaf(node, indicatorsMap);
+  }
+
+  if (node.kind === 'status') {
+    // 상태 조건 (수익률 등)
+    const metricName = node.metric === 'profitRate' ? '수익률' : node.metric;
+    if (node.comparison && node.comparison.kind === 'value') {
+      return `${metricName} ${formatComparator(node.comparison.comparator)} ${node.comparison.value}${node.unit === 'percent' ? '%' : ''}`;
+    }
+    return metricName;
+  }
+
+  if (node.kind === 'group') {
+    const children = (node.children || []).map((child: any) => formatConditionNode(child, indicatorsMap)).filter(Boolean);
+    if (children.length === 0) return '';
+    if (children.length === 1) return children[0];
+
+    const op = node.operator === 'and' ? ' & ' : ' | ';
+    return children.join(op);
+  }
+
+  return '';
+}
+
+// IndicatorConditions 전체를 한글로 변환
+function formatIndicatorConditions(indicators: any): string[] {
+  if (!indicators || !indicators.root) return [];
+
+  // 모든 indicator를 맵으로 수집
+  const indicatorsMap = new Map<string, any>();
+  const collectIndicators = (node: any) => {
+    if (node.kind === 'indicator' && node.indicator) {
+      indicatorsMap.set(node.indicator.id, node.indicator);
+    }
+    if (node.kind === 'group' && node.children) {
+      node.children.forEach(collectIndicators);
+    }
+  };
+  collectIndicators(indicators.root);
+
+  // root의 children을 그룹별로 변환
+  const groups: string[] = [];
+  const rootChildren = indicators.root.children || [];
+
+  rootChildren.forEach((child: any, index: number) => {
+    const formatted = formatConditionNode(child, indicatorsMap);
+    if (formatted) {
+      groups.push(`조건그룹${index + 1}: ${formatted}`);
+    }
+  });
+
+  return groups;
+}
+
+// 지표 조건을 한글로 변환 (레거시, 사용 안함)
 export function formatIndicatorCondition(indicator: any): string {
   if (!indicator || !indicator.type) return '';
 
@@ -189,8 +322,6 @@ function countIndicators(indicators: any): number {
 
 // 진입 조건 요약
 export function formatEntrySettings(entry: any, direction: 'long' | 'short'): string[] {
-  const summary: string[] = [];
-
   if (!entry || !entry[direction]) return ['조건 없음'];
 
   const config = entry[direction];
@@ -200,16 +331,20 @@ export function formatEntrySettings(entry: any, direction: 'long' | 'short'): st
   }
 
   // indicators 구조 확인
-  const indicatorCount = countIndicators(config.indicators);
-  if (indicatorCount > 0) {
-    summary.push(`지표 조건 ${indicatorCount}개 설정됨`);
+  const groups = formatIndicatorConditions(config.indicators);
+
+  if (config.immediate && groups.length === 0) {
+    return ['즉시 진입'];
   }
 
-  if (config.immediate) {
-    summary.push('즉시 진입');
+  if (groups.length > 0) {
+    if (config.immediate) {
+      return ['즉시 진입', ...groups];
+    }
+    return groups;
   }
 
-  return summary.length > 0 ? summary : ['조건 없음'];
+  return ['조건 없음'];
 }
 
 // 추가 매수 조건 요약
@@ -232,10 +367,8 @@ export function formatScaleInSettings(scaleIn: any, direction: 'long' | 'short')
     summary.push(`최대 횟수: ${config.maxCount}회`);
   }
 
-  const indicatorCount = countIndicators(config.indicators);
-  if (indicatorCount > 0) {
-    summary.push(`지표 조건 ${indicatorCount}개 설정됨`);
-  }
+  const groups = formatIndicatorConditions(config.indicators);
+  summary.push(...groups);
 
   return summary.length > 0 ? summary : ['조건 없음'];
 }
@@ -260,20 +393,18 @@ export function formatExitSettings(exit: any, direction: 'long' | 'short'): stri
     summary.push(`손절: -${config.stopLossPct}%`);
   }
 
-  const indicatorCount = countIndicators(config.indicators);
-  if (indicatorCount > 0) {
-    summary.push(`지표 조건 ${indicatorCount}개 설정됨`);
-  }
-
   // 현재 수익률 조건
   if (config.currentProfitRate && config.currentProfitRate.enabled) {
     const comp = config.currentProfitRate.comparator;
     const val = config.currentProfitRate.value;
-    const compText = comp === 'over' ? '>' : comp === 'under' ? '<' : comp === 'eq' ? '=' : comp === 'gte' ? '≥' : comp === 'lte' ? '≤' : '';
+    const compText = formatComparator(comp);
     if (compText) {
       summary.push(`수익률 ${compText} ${val}%`);
     }
   }
+
+  const groups = formatIndicatorConditions(config.indicators);
+  summary.push(...groups);
 
   return summary.length > 0 ? summary : ['조건 없음'];
 }
@@ -296,20 +427,18 @@ export function formatHedgeSettings(hedge: any): string[] {
     summary.push(`헤지 크기: ${hedge.size}%`);
   }
 
-  const indicatorCount = countIndicators(hedge.indicators);
-  if (indicatorCount > 0) {
-    summary.push(`지표 조건 ${indicatorCount}개 설정됨`);
-  }
-
   // 현재 수익률 조건
   if (hedge.currentProfitRate && hedge.currentProfitRate.enabled) {
     const comp = hedge.currentProfitRate.comparator;
     const val = hedge.currentProfitRate.value;
-    const compText = comp === 'over' ? '>' : comp === 'under' ? '<' : comp === 'eq' ? '=' : comp === 'gte' ? '≥' : comp === 'lte' ? '≤' : '';
+    const compText = formatComparator(comp);
     if (compText) {
       summary.push(`수익률 ${compText} ${val}%`);
     }
   }
+
+  const groups = formatIndicatorConditions(hedge.indicators);
+  summary.push(...groups);
 
   return summary.length > 0 ? summary : ['조건 없음'];
 }
@@ -334,20 +463,18 @@ export function formatStopLossLineSettings(stopLoss: any): string[] {
     summary.push('자동 재생성');
   }
 
-  const indicatorCount = countIndicators(config.indicators);
-  if (indicatorCount > 0) {
-    summary.push(`지표 조건 ${indicatorCount}개 설정됨`);
-  }
-
   // 현재 수익률 조건
   if (config.currentProfitRate && config.currentProfitRate.enabled) {
     const comp = config.currentProfitRate.comparator;
     const val = config.currentProfitRate.value;
-    const compText = comp === 'over' ? '>' : comp === 'under' ? '<' : comp === 'eq' ? '=' : comp === 'gte' ? '≥' : comp === 'lte' ? '≤' : '';
+    const compText = formatComparator(comp);
     if (compText) {
       summary.push(`수익률 ${compText} ${val}%`);
     }
   }
+
+  const groups = formatIndicatorConditions(config.indicators);
+  summary.push(...groups);
 
   return summary.length > 0 ? summary : ['조건 없음'];
 }
