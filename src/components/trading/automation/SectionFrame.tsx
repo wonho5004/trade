@@ -17,10 +17,12 @@ type SectionFrameProps = {
   forceEnableSave?: boolean;
   helpTitle?: string;
   helpContent?: React.ReactNode;
+  // 설정 요약 (접혔을 때 표시)
+  summary?: string[];
   children: ReactNode;
 };
 
-export function SectionFrame({ sectionKey, title, description, errorMessage, isDirty = false, onSave, onReset, forceEnableSave = false, helpTitle, helpContent, children }: SectionFrameProps) {
+export function SectionFrame({ sectionKey, title, description, errorMessage, isDirty = false, onSave, onReset, forceEnableSave = false, helpTitle, helpContent, summary, children }: SectionFrameProps) {
   const isCollapsed = useUIPreferencesStore((s) => s.autoTrading.collapsedSections[sectionKey] !== false);
   const toggleCollapsed = useUIPreferencesStore((s) => s.toggleCollapsed);
   const setCollapsed = useUIPreferencesStore((s) => s.setCollapsed);
@@ -131,7 +133,23 @@ export function SectionFrame({ sectionKey, title, description, errorMessage, isD
         ) : null}
         </div>
       </header>
-      {!isCollapsed ? <div className="p-4 md:p-5">{children}</div> : null}
+      {!isCollapsed ? (
+        <div className="p-4 md:p-5">{children}</div>
+      ) : summary && summary.length > 0 ? (
+        <div className="px-4 pb-3 md:px-5 md:pb-4">
+          <div className="rounded border border-zinc-800 bg-zinc-900/40 p-3">
+            <div className="mb-1 text-xs font-medium text-zinc-400">현재 설정</div>
+            <ul className="space-y-1 text-sm text-zinc-300">
+              {summary.map((line, idx) => (
+                <li key={idx} className="flex items-start gap-2">
+                  <span className="mt-1 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-emerald-400/70" />
+                  <span>{line}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      ) : null}
       {helpContent ? (
         <HelpModal open={showHelp} title={helpTitle ?? `${title} 도움말`} onClose={() => setShowHelp(false)}>
           {helpContent}

@@ -31,6 +31,15 @@ import { collectIndicatorNodes } from '@/lib/trading/conditionsTree';
 import { useSymbolValidation } from '@/hooks/useSymbolValidation';
 import { useUIPreferencesStore } from '@/stores/uiPreferencesStore';
 import { normalizeSymbol as toExchangeSymbol } from '@/lib/trading/symbols';
+import {
+  formatBasicSettings,
+  formatCapitalSettings,
+  formatEntrySettings,
+  formatScaleInSettings,
+  formatExitSettings,
+  formatHedgeSettings,
+  formatStopLossLineSettings
+} from '@/lib/trading/settingsSummary';
 
 type Draft = AutoTradingSettings;
 
@@ -756,6 +765,18 @@ export function AutoTradingSettingsForm() {
       });
     };
   };
+
+  // 각 섹션의 설정 요약 생성
+  const basicSummary = useMemo(() => formatBasicSettings(draft), [draft]);
+  const capitalSummary = useMemo(() => formatCapitalSettings(draft.capital, symbolsQuote), [draft.capital, symbolsQuote]);
+  const entryLongSummary = useMemo(() => formatEntrySettings(draft.entry, 'long'), [draft.entry]);
+  const entryShortSummary = useMemo(() => formatEntrySettings(draft.entry, 'short'), [draft.entry]);
+  const scaleInLongSummary = useMemo(() => formatScaleInSettings(draft.scaleIn, 'long'), [draft.scaleIn]);
+  const scaleInShortSummary = useMemo(() => formatScaleInSettings(draft.scaleIn, 'short'), [draft.scaleIn]);
+  const exitLongSummary = useMemo(() => formatExitSettings(draft.exit, 'long'), [draft.exit]);
+  const exitShortSummary = useMemo(() => formatExitSettings(draft.exit, 'short'), [draft.exit]);
+  const hedgeSummary = useMemo(() => formatHedgeSettings(draft.hedgeActivation), [draft.hedgeActivation]);
+  const stopLossSummary = useMemo(() => formatStopLossLineSettings(draft.stopLossLine), [draft.stopLossLine]);
 
   return (
     <div className="flex flex-col gap-5">
@@ -1935,6 +1956,17 @@ export function AutoTradingSettingsForm() {
           helpTitle="기본 설정 도움말"
           helpContent={helpContent.basic}
           onSave={handleSaveBasic}
+          summary={basicSummary}
+          onReset={() => {
+            setDraft((d) => ({
+              ...d,
+              leverage: 10,
+              symbolCount: 5,
+              assetMode: 'multi',
+              positionMode: 'one_way',
+              marginType: 'ISOLATED'
+            }));
+          }}
         >
           <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 text-xs text-zinc-300">
             <label className="flex items-center gap-2">
@@ -2117,6 +2149,20 @@ export function AutoTradingSettingsForm() {
           updateSettings((d) => { d.capital = draft.capital; d.metadata.lastSavedAt = new Date().toISOString(); });
           return () => { setDraft((dr) => ({ ...dr, capital: prev })); updateSettings((d) => { d.capital = prev; d.metadata.lastSavedAt = new Date().toISOString(); }); };
         }}
+        summary={capitalSummary}
+        onReset={() => {
+          setDraft((d) => ({
+            ...d,
+            capital: {
+              estimatedBalance: 1000,
+              maxMargin: { basis: 'wallet', percentage: 80 },
+              initial: { mode: 'fixed', fixedAmount: 100, walletPct: 10 },
+              scaleIn: { mode: 'fixed', fixedAmount: 50, walletPct: 5, limitEnabled: false, limitAmount: null },
+              exceptions: {},
+              hedgeBudget: { separateByDirection: false, long: { mode: 'fixed', fixedAmount: 100, walletPct: 10 }, short: { mode: 'fixed', fixedAmount: 100, walletPct: 10 } }
+            } as any
+          }));
+        }}
       >
         <div className="space-y-3">
           <CapitalSettingsPanel
@@ -2142,6 +2188,16 @@ export function AutoTradingSettingsForm() {
           helpTitle="진입(매수) 도움말"
           helpContent={helpContent.entry}
           onSave={handleSaveEntry}
+          summary={[...entryLongSummary.map(s => `롱: ${s}`), ...entryShortSummary.map(s => `숏: ${s}`)]}
+          onReset={() => {
+            setDraft((d) => ({
+              ...d,
+              entry: {
+                long: { enabled: true, conditions: null },
+                short: { enabled: false, conditions: null }
+              }
+            }));
+          }}
         >
           <div className="grid gap-4 md:grid-cols-2">
             {(['long', 'short'] as const).map((dir) => (
@@ -2217,6 +2273,16 @@ export function AutoTradingSettingsForm() {
           helpTitle="추가매수 도움말"
           helpContent={helpContent.scaleIn}
           onSave={handleSaveScaleIn}
+          summary={[...scaleInLongSummary.map(s => `롱: ${s}`), ...scaleInShortSummary.map(s => `숏: ${s}`)]}
+          onReset={() => {
+            setDraft((d) => ({
+              ...d,
+              scaleIn: {
+                long: { enabled: false, priceDropPct: null, maxCount: null, conditions: null },
+                short: { enabled: false, priceDropPct: null, maxCount: null, conditions: null }
+              }
+            }));
+          }}
         >
           <div className="grid gap-4 md:grid-cols-2">
             {(['long', 'short'] as const).map((dir) => (
@@ -2274,6 +2340,16 @@ export function AutoTradingSettingsForm() {
           helpTitle="매도(청산) 도움말"
           helpContent={helpContent.exit}
           onSave={handleSaveExit}
+          summary={[...exitLongSummary.map(s => `롱: ${s}`), ...exitShortSummary.map(s => `숏: ${s}`)]}
+          onReset={() => {
+            setDraft((d) => ({
+              ...d,
+              exit: {
+                long: { enabled: true, takeProfitPct: null, stopLossPct: null, conditions: null },
+                short: { enabled: false, takeProfitPct: null, stopLossPct: null, conditions: null }
+              }
+            }));
+          }}
         >
           <div className="grid gap-4 md:grid-cols-2">
             {(['long', 'short'] as const).map((dir) => (
@@ -2337,6 +2413,18 @@ export function AutoTradingSettingsForm() {
           helpTitle="헤지 모드 도움말"
           helpContent={helpContent.hedge}
           onSave={handleSaveHedge}
+          summary={hedgeSummary}
+          onReset={() => {
+            setDraft((d) => ({
+              ...d,
+              hedgeActivation: {
+                enabled: false,
+                triggerPct: null,
+                size: null,
+                conditions: null
+              }
+            }));
+          }}
         >
           <div className="space-y-2 rounded border border-zinc-800 bg-zinc-950/60 p-3 text-xs text-zinc-300">
             <div className="flex items-center gap-3">
@@ -2416,6 +2504,18 @@ export function AutoTradingSettingsForm() {
           helpTitle="포지션 포기(손절) 도움말"
           helpContent={helpContent.stopLoss}
           onSave={handleSaveStopLoss}
+          summary={stopLossSummary}
+          onReset={() => {
+            setDraft((d) => ({
+              ...d,
+              stopLossLine: {
+                enabled: false,
+                pct: null,
+                trailing: false,
+                conditions: null
+              }
+            }));
+          }}
         >
           <div className="space-y-2 rounded border border-zinc-800 bg-zinc-950/60 p-3 text-xs text-zinc-300">
             <div className="flex items-center gap-3">
