@@ -612,22 +612,17 @@ export function SymbolsPickerPanel({
                   <tr key={sym} className="border-b border-zinc-800 hover:bg-zinc-900/30">
                     <td className="px-2 py-1 text-zinc-300">{sym}</td>
                     <td className="px-2 py-1 space-x-1">
-                      {inSel ? (
-                        <button className="rounded border border-rose-600 px-2 py-0.5 text-[10px] text-rose-300 hover:bg-rose-900/20" onClick={() => removeManual(sym)}>
-                          제거
-                        </button>
-                      ) : (
-                        <button className="rounded border border-emerald-600 px-2 py-0.5 text-[10px] text-emerald-300 hover:bg-emerald-900/20" onClick={() => addManual(sym)}>
-                          추가
-                        </button>
-                      )}
                       {inEx ? (
                         <button className="rounded border border-zinc-600 px-2 py-0.5 text-[10px] text-zinc-300 hover:bg-zinc-800" onClick={() => removeExcluded(sym)}>
                           제외해제
                         </button>
-                      ) : (
+                      ) : inSel ? (
                         <button className="rounded border border-zinc-600 px-2 py-0.5 text-[10px] text-zinc-300 hover:bg-zinc-800" onClick={() => addExcluded(sym)}>
                           제외
+                        </button>
+                      ) : (
+                        <button className="rounded border border-emerald-600 px-2 py-0.5 text-[10px] text-emerald-300 hover:bg-emerald-900/20" onClick={() => addManual(sym)}>
+                          추가
                         </button>
                       )}
                     </td>
