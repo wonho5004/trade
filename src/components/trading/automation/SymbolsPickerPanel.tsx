@@ -270,11 +270,14 @@ export function SymbolsPickerPanel({
   const addManual = (sym: string) => {
     const up = normalizeSymbol(sym, quote);
     if (!up) return;
+    // 선택 목록에 추가하면서 제외 목록에서 제거
     const nextManual = Array.from(new Set([...manual, up]));
+    const nextExcluded = excluded.filter((s) => normalizeSymbol(s, quote) !== up);
+    const { [up]: _removed, ...restReasons } = excludedReasons;
     onChange({
       manual: nextManual,
-      excluded,
-      excludedReasons: { ...excludedReasons },
+      excluded: nextExcluded,
+      excludedReasons: restReasons,
       leverageOverrides: { ...leverageOverrides },
       positionOverrides: { ...(positionOverrides ?? {}) },
       featureOverrides: { ...(featureOverrides ?? {}) }
@@ -283,10 +286,12 @@ export function SymbolsPickerPanel({
   const addExcluded = (sym: string) => {
     const up = normalizeSymbol(sym, quote);
     if (!up) return;
+    // 제외 목록에 추가하면서 선택 목록에서 제거
+    const nextManual = manual.filter((s) => normalizeSymbol(s, quote) !== up);
     const nextExcluded = Array.from(new Set([...excluded, up]));
     const nextReasons = { ...excludedReasons, [up]: excludedReasons[up] ?? '수동제외' } as Record<string, string>;
     onChange({
-      manual,
+      manual: nextManual,
       excluded: nextExcluded,
       excludedReasons: nextReasons,
       leverageOverrides: { ...leverageOverrides },
@@ -612,17 +617,22 @@ export function SymbolsPickerPanel({
                   <tr key={sym} className="border-b border-zinc-800 hover:bg-zinc-900/30">
                     <td className="px-2 py-1 text-zinc-300">{sym}</td>
                     <td className="px-2 py-1 space-x-1">
-                      {inEx ? (
-                        <button className="rounded border border-zinc-600 px-2 py-0.5 text-[10px] text-zinc-300 hover:bg-zinc-800" onClick={() => removeExcluded(sym)}>
-                          제외해제
-                        </button>
-                      ) : inSel ? (
-                        <button className="rounded border border-zinc-600 px-2 py-0.5 text-[10px] text-zinc-300 hover:bg-zinc-800" onClick={() => addExcluded(sym)}>
-                          제외
+                      {inSel ? (
+                        <button className="rounded border border-rose-600 px-2 py-0.5 text-[10px] text-rose-300 hover:bg-rose-900/20" onClick={() => removeManual(sym)}>
+                          제거
                         </button>
                       ) : (
                         <button className="rounded border border-emerald-600 px-2 py-0.5 text-[10px] text-emerald-300 hover:bg-emerald-900/20" onClick={() => addManual(sym)}>
                           추가
+                        </button>
+                      )}
+                      {inEx ? (
+                        <button className="rounded border border-zinc-600 px-2 py-0.5 text-[10px] text-zinc-300 hover:bg-zinc-800" onClick={() => removeExcluded(sym)}>
+                          제외해제
+                        </button>
+                      ) : (
+                        <button className="rounded border border-zinc-600 px-2 py-0.5 text-[10px] text-zinc-300 hover:bg-zinc-800" onClick={() => addExcluded(sym)}>
+                          제외
                         </button>
                       )}
                     </td>
