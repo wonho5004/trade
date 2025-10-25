@@ -53,7 +53,15 @@ function formatIndicatorLeaf(node: any, indicatorsMap: Map<string, any>): string
   const indicatorName = formatIndicatorName(indicator.type, node.metric);
   const comparison = node.comparison;
 
+  // comparison이 없거나 none인 경우
   if (!comparison || comparison.kind === 'none') {
+    // 디버그: 실제 구조 확인
+    console.log('[formatIndicatorLeaf] No comparison or none:', {
+      indicatorType: indicator.type,
+      metric: node.metric,
+      comparison: comparison,
+      fullNode: JSON.stringify(node, null, 2)
+    });
     return indicatorName;
   }
 
@@ -75,6 +83,8 @@ function formatIndicatorLeaf(node: any, indicatorsMap: Map<string, any>): string
     return `${indicatorName} ${formatComparator(comparison.comparator)} [지표]`;
   }
 
+  // 디버그: 알 수 없는 comparison kind
+  console.log('[formatIndicatorLeaf] Unknown comparison kind:', comparison);
   return indicatorName;
 }
 
@@ -111,6 +121,9 @@ function formatConditionNode(node: any, indicatorsMap: Map<string, any>): string
 function formatIndicatorConditions(indicators: any): string[] {
   if (!indicators || !indicators.root) return [];
 
+  // 디버그: root 구조 확인
+  console.log('[formatIndicatorConditions] Root structure:', JSON.stringify(indicators.root, null, 2));
+
   // 모든 indicator를 맵으로 수집
   const indicatorsMap = new Map<string, any>();
   const collectIndicators = (node: any) => {
@@ -123,12 +136,16 @@ function formatIndicatorConditions(indicators: any): string[] {
   };
   collectIndicators(indicators.root);
 
+  console.log('[formatIndicatorConditions] Collected indicators:', Array.from(indicatorsMap.entries()));
+
   // root의 children을 그룹별로 변환
   const groups: string[] = [];
   const rootChildren = indicators.root.children || [];
 
   rootChildren.forEach((child: any, index: number) => {
+    console.log(`[formatIndicatorConditions] Processing child ${index}:`, JSON.stringify(child, null, 2));
     const formatted = formatConditionNode(child, indicatorsMap);
+    console.log(`[formatIndicatorConditions] Formatted result:`, formatted);
     if (formatted) {
       groups.push(`조건그룹${index + 1}: ${formatted}`);
     }
