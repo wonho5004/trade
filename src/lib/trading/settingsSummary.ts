@@ -167,6 +167,26 @@ export function formatCapitalSettings(capital: any, quote: string = 'USDT'): str
   return summary;
 }
 
+// indicators에서 조건 개수 확인
+function countIndicators(indicators: any): number {
+  if (!indicators || !indicators.root) return 0;
+
+  const root = indicators.root;
+  if (!root.children || !Array.isArray(root.children)) return 0;
+
+  let count = 0;
+  const traverse = (node: any) => {
+    if (node.type === 'indicator') {
+      count++;
+    } else if (node.children && Array.isArray(node.children)) {
+      node.children.forEach(traverse);
+    }
+  };
+
+  root.children.forEach(traverse);
+  return count;
+}
+
 // 진입 조건 요약
 export function formatEntrySettings(entry: any, direction: 'long' | 'short'): string[] {
   const summary: string[] = [];
@@ -179,11 +199,14 @@ export function formatEntrySettings(entry: any, direction: 'long' | 'short'): st
     return ['비활성화'];
   }
 
-  if (config.conditions) {
-    const condStr = formatConditionTree(config.conditions);
-    if (condStr) {
-      summary.push(`조건: ${condStr}`);
-    }
+  // indicators 구조 확인
+  const indicatorCount = countIndicators(config.indicators);
+  if (indicatorCount > 0) {
+    summary.push(`지표 조건 ${indicatorCount}개 설정됨`);
+  }
+
+  if (config.immediate) {
+    summary.push('즉시 진입');
   }
 
   return summary.length > 0 ? summary : ['조건 없음'];
@@ -209,11 +232,9 @@ export function formatScaleInSettings(scaleIn: any, direction: 'long' | 'short')
     summary.push(`최대 횟수: ${config.maxCount}회`);
   }
 
-  if (config.conditions) {
-    const condStr = formatConditionTree(config.conditions);
-    if (condStr) {
-      summary.push(`추가 조건: ${condStr}`);
-    }
+  const indicatorCount = countIndicators(config.indicators);
+  if (indicatorCount > 0) {
+    summary.push(`지표 조건 ${indicatorCount}개 설정됨`);
   }
 
   return summary.length > 0 ? summary : ['조건 없음'];
@@ -239,10 +260,18 @@ export function formatExitSettings(exit: any, direction: 'long' | 'short'): stri
     summary.push(`손절: -${config.stopLossPct}%`);
   }
 
-  if (config.conditions) {
-    const condStr = formatConditionTree(config.conditions);
-    if (condStr) {
-      summary.push(`추가 조건: ${condStr}`);
+  const indicatorCount = countIndicators(config.indicators);
+  if (indicatorCount > 0) {
+    summary.push(`지표 조건 ${indicatorCount}개 설정됨`);
+  }
+
+  // 현재 수익률 조건
+  if (config.currentProfitRate && config.currentProfitRate.enabled) {
+    const comp = config.currentProfitRate.comparator;
+    const val = config.currentProfitRate.value;
+    const compText = comp === 'over' ? '>' : comp === 'under' ? '<' : comp === 'eq' ? '=' : comp === 'gte' ? '≥' : comp === 'lte' ? '≤' : '';
+    if (compText) {
+      summary.push(`수익률 ${compText} ${val}%`);
     }
   }
 
@@ -267,10 +296,18 @@ export function formatHedgeSettings(hedge: any): string[] {
     summary.push(`헤지 크기: ${hedge.size}%`);
   }
 
-  if (hedge.conditions) {
-    const condStr = formatConditionTree(hedge.conditions);
-    if (condStr) {
-      summary.push(`추가 조건: ${condStr}`);
+  const indicatorCount = countIndicators(hedge.indicators);
+  if (indicatorCount > 0) {
+    summary.push(`지표 조건 ${indicatorCount}개 설정됨`);
+  }
+
+  // 현재 수익률 조건
+  if (hedge.currentProfitRate && hedge.currentProfitRate.enabled) {
+    const comp = hedge.currentProfitRate.comparator;
+    const val = hedge.currentProfitRate.value;
+    const compText = comp === 'over' ? '>' : comp === 'under' ? '<' : comp === 'eq' ? '=' : comp === 'gte' ? '≥' : comp === 'lte' ? '≤' : '';
+    if (compText) {
+      summary.push(`수익률 ${compText} ${val}%`);
     }
   }
 
@@ -281,18 +318,35 @@ export function formatHedgeSettings(hedge: any): string[] {
 export function formatStopLossLineSettings(stopLoss: any): string[] {
   const summary: string[] = [];
 
-  if (!stopLoss) return ['조건 없음'];
+  if (!stopLoss || !stopLoss.stopLossLine) return ['조건 없음'];
 
-  if (stopLoss.enabled === false) {
+  const config = stopLoss.stopLossLine;
+
+  if (config.enabled === false) {
     return ['비활성화'];
   }
 
-  if (stopLoss.pct) {
-    summary.push(`손절선: -${stopLoss.pct}%`);
+  if (config.pct) {
+    summary.push(`손절선: -${config.pct}%`);
   }
 
-  if (stopLoss.trailing) {
-    summary.push('트레일링 활성화');
+  if (config.autoRecreate) {
+    summary.push('자동 재생성');
+  }
+
+  const indicatorCount = countIndicators(config.indicators);
+  if (indicatorCount > 0) {
+    summary.push(`지표 조건 ${indicatorCount}개 설정됨`);
+  }
+
+  // 현재 수익률 조건
+  if (config.currentProfitRate && config.currentProfitRate.enabled) {
+    const comp = config.currentProfitRate.comparator;
+    const val = config.currentProfitRate.value;
+    const compText = comp === 'over' ? '>' : comp === 'under' ? '<' : comp === 'eq' ? '=' : comp === 'gte' ? '≥' : comp === 'lte' ? '≤' : '';
+    if (compText) {
+      summary.push(`수익률 ${compText} ${val}%`);
+    }
   }
 
   return summary.length > 0 ? summary : ['조건 없음'];
