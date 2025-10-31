@@ -162,7 +162,7 @@ export function SettingsConfirmModal({ settings, onConfirm, onCancel, isOpen }: 
                     <dd className="font-medium text-zinc-200">{settings.timeframe}</dd>
                   </div>
                   <div className="flex justify-between">
-                    <dt className="text-zinc-400">레버리지:</dt>
+                    <dt className="text-zinc-400">기본 레버리지:</dt>
                     <dd className="font-medium text-zinc-200">{settings.leverage}x</dd>
                   </div>
                   <div className="flex justify-between">
@@ -176,6 +176,58 @@ export function SettingsConfirmModal({ settings, onConfirm, onCancel, isOpen }: 
                     </dd>
                   </div>
                 </dl>
+              </section>
+
+              {/* 종목 설정 */}
+              <section className="rounded-lg border border-zinc-700 bg-zinc-800/50 p-3">
+                <h3 className="mb-2 text-sm font-semibold text-zinc-100">종목 설정</h3>
+                <div className="space-y-2">
+                  <div>
+                    <h4 className="mb-1 text-xs font-medium text-zinc-300">선택된 종목</h4>
+                    {settings.symbolSelection.manualSymbols.length > 0 ? (
+                      <div className="max-h-32 overflow-y-auto rounded border border-zinc-700 bg-zinc-900 p-2">
+                        <div className="space-y-1">
+                          {settings.symbolSelection.manualSymbols.map((symbol) => {
+                            const leverage = settings.symbolSelection.leverageMode === 'custom'
+                              ? settings.symbolSelection.leverageOverrides[symbol] || settings.leverage
+                              : settings.leverage;
+                            return (
+                              <div key={symbol} className="flex items-center justify-between text-xs">
+                                <span className="font-mono text-zinc-200">{symbol}</span>
+                                <span className="text-zinc-400">{leverage}x</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-zinc-500">수동 선택된 종목 없음</p>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div className="rounded border border-blue-600/30 bg-blue-950/20 p-2">
+                      <div className="mb-1 font-medium text-blue-300">초기 진입</div>
+                      <div className="text-zinc-300">
+                        {settings.capital.initialMargin.mode === 'per_symbol_percentage' && `종목당 ${settings.capital.initialMargin.percentage}%`}
+                        {settings.capital.initialMargin.mode === 'all_symbols_percentage' && `전체 ${settings.capital.initialMargin.percentage}%`}
+                        {settings.capital.initialMargin.mode === 'usdt_amount' && `${settings.capital.initialMargin.usdtAmount} USDT`}
+                        {settings.capital.initialMargin.mode === 'min_notional' && `최소 거래금액 기준`}
+                      </div>
+                      <div className="mt-0.5 text-zinc-500">({settings.capital.initialMargin.basis})</div>
+                    </div>
+                    <div className="rounded border border-purple-600/30 bg-purple-950/20 p-2">
+                      <div className="mb-1 font-medium text-purple-300">추가 매수</div>
+                      <div className="text-zinc-300">
+                        {settings.capital.scaleInBudget.mode === 'per_symbol_percentage' && `종목당 ${settings.capital.scaleInBudget.percentage}%`}
+                        {settings.capital.scaleInBudget.mode === 'balance_percentage' && `잔고 ${settings.capital.scaleInBudget.percentage}%`}
+                        {settings.capital.scaleInBudget.mode === 'usdt_amount' && `${settings.capital.scaleInBudget.usdtAmount || 0} USDT`}
+                        {settings.capital.scaleInBudget.mode === 'position_percent' && `포지션 ${settings.capital.scaleInBudget.percentage}%`}
+                        {settings.capital.scaleInBudget.mode === 'min_notional' && `최소 거래금액 기준`}
+                      </div>
+                      <div className="mt-0.5 text-zinc-500">({settings.capital.scaleInBudget.basis})</div>
+                    </div>
+                  </div>
+                </div>
               </section>
 
               {/* 진입 조건 */}
@@ -225,26 +277,20 @@ export function SettingsConfirmModal({ settings, onConfirm, onCancel, isOpen }: 
                 </div>
               </section>
 
-              {/* 자본 설정 */}
+              {/* 위험 관리 */}
               <section className="rounded-lg border border-zinc-700 bg-zinc-800/50 p-3">
-                <h3 className="mb-2 text-sm font-semibold text-zinc-100">자본 설정</h3>
+                <h3 className="mb-2 text-sm font-semibold text-zinc-100">위험 관리</h3>
                 <dl className="space-y-1 text-xs">
                   <div className="flex justify-between">
-                    <dt className="text-zinc-400">최대 마진:</dt>
+                    <dt className="text-zinc-400">최대 마진 사용:</dt>
                     <dd className="font-medium text-zinc-200">
                       {settings.capital.maxMargin.percentage}% ({settings.capital.maxMargin.basis})
                     </dd>
                   </div>
                   <div className="flex justify-between">
-                    <dt className="text-zinc-400">초기 진입:</dt>
+                    <dt className="text-zinc-400">예상 잔고:</dt>
                     <dd className="font-medium text-zinc-200">
-                      {settings.capital.initialMargin.percentage}% ({settings.capital.initialMargin.mode})
-                    </dd>
-                  </div>
-                  <div className="flex justify-between">
-                    <dt className="text-zinc-400">추가 매수 예산:</dt>
-                    <dd className="font-medium text-zinc-200">
-                      {settings.capital.scaleInBudget.percentage}% ({settings.capital.scaleInBudget.mode})
+                      {settings.capital.estimatedBalance.toLocaleString()} USDT
                     </dd>
                   </div>
                 </dl>
