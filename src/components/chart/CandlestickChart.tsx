@@ -1492,21 +1492,18 @@ export function CandlestickChart() {
   }, [candles, overlays, maConfigs, bollingerConfig, rsiConfig, macdConfig, dmiConfig]);
 
   return (
-    <div className="flex min-w-0 flex-col gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-zinc-800 bg-zinc-950 px-4 py-3 text-xs text-zinc-300 md:text-sm">
-        <div className="flex flex-col gap-2">
-          <div className="flex flex-wrap items-center gap-3 md:gap-4">
-            <span className="text-base font-semibold text-zinc-100 md:text-lg">{symbol}</span>
-            <span className="text-lg font-semibold text-zinc-100 md:text-xl">{formattedPrice}</span>
-            <span className={`text-sm font-semibold ${changeColor}`}>{formattedChange}</span>
-            <span className={`rounded border px-2 py-1 text-[10px] font-semibold uppercase tracking-wide ${statusBadgeClass}`}>
-              {statusLabel}
-            </span>
-            <span className="rounded bg-zinc-800 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-zinc-200">
-              {interval}
-            </span>
-          </div>
-          <div className="flex flex-wrap items-center gap-2 text-[11px] uppercase tracking-wide text-zinc-500 md:gap-3 md:text-xs" />
+    <div className="flex min-w-0 flex-col gap-1">
+      <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-zinc-800 bg-zinc-950 px-4 py-2 text-xs text-zinc-300 md:text-sm">
+        <div className="flex items-center flex-wrap gap-3 md:gap-4">
+          <span className="text-base font-semibold text-zinc-100 md:text-lg">{symbol}</span>
+          <span className="text-lg font-semibold text-zinc-100 md:text-xl">{formattedPrice}</span>
+          <span className={`text-sm font-semibold ${changeColor}`}>{formattedChange}</span>
+          <span className={`rounded border px-2 py-1 text-[10px] font-semibold uppercase tracking-wide ${statusBadgeClass}`}>
+            {statusLabel}
+          </span>
+          <span className="rounded bg-zinc-800 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-zinc-200">
+            {interval}
+          </span>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <button

@@ -12,8 +12,12 @@ import { TradeHistoryPanel } from './TradeHistoryPanel';
 import { ConditionMonitorPanel } from './ConditionMonitorPanel';
 import { ExecutionMonitor } from './ExecutionMonitor';
 import { SymbolMonitoringTable } from './SymbolMonitoringTable';
+import { useSessionKeepalive } from '@/hooks/useSessionKeepalive';
 
 export function MonitoringDashboard() {
+  // 세션 만료 방지: 5분마다 세션 상태를 체크하고 필요시 갱신
+  useSessionKeepalive(5);
+
   return (
     <div className="min-h-screen bg-zinc-950 py-6">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">

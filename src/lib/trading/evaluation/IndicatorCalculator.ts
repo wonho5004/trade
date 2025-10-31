@@ -266,8 +266,8 @@ export class IndicatorCalculator {
         if (dmiResult) {
           const { plusDI, minusDI, adx } = dmiResult;
 
-          console.log(`[DMI Debug] Raw values - plusDI: ${plusDI.toFixed(2)}, minusDI: ${minusDI.toFixed(2)}, adx: ${adx.toFixed(2)}`);
-          console.log(`[DMI Debug] Config:`, JSON.stringify(config, null, 2));
+          console.log(`[DMI Debug ${symbol}] Raw values - DI+: ${plusDI.toFixed(2)}, DI-: ${minusDI.toFixed(2)}, ADX: ${adx.toFixed(2)}, Period: ${diPeriod}`);
+          console.log(`[DMI Debug ${symbol}] Data points: ${closes.length} candles`);
 
           // 항상 ADX 값 반환 (복합 조건 평가는 별도로 처리)
           value = adx;

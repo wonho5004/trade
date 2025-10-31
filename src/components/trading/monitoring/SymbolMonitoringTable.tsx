@@ -408,8 +408,12 @@ export function SymbolMonitoringTable() {
           }
         }
 
-        // EXIT 평가가 있으면 신호 업데이트
-        if (latestExit) {
+        // 포지션 존재 여부
+        const hasOpenPosition = !!position;
+
+        // EXIT 평가가 있고 포지션이 있을 때만 신호 업데이트
+        // 포지션이 없으면 이전 평가 결과가 있어도 무시
+        if (latestExit && hasOpenPosition) {
           exitSignal = latestExit.evaluation_result || false;
 
           // EXIT 지표 처리
@@ -601,9 +605,6 @@ export function SymbolMonitoringTable() {
           profitFactor: avgLoss > 0 ? avgProfit / avgLoss : avgProfit > 0 ? 999 : 0,
           maxDrawdown: 0 // 계산 필요
         };
-
-        // 포지션 존재 여부
-        const hasOpenPosition = !!position;
 
         // 리스크 점수 계산 (0-100)
         let riskScore = 0;

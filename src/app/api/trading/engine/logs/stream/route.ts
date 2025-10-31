@@ -133,7 +133,7 @@ export async function GET(request: NextRequest) {
         const statsInterval = setInterval(async () => {
           try {
             // 엔진 상태 가져오기
-            const engineStatus = engine.getStatus();
+            const engineStatus = await engine.getStatus();
 
             // DB에서 통계 조회
             const supabase = createSupabaseServerClient('service');
@@ -175,9 +175,8 @@ export async function GET(request: NextRequest) {
               failedOrders,
               activePositions: positions?.length || 0,
               avgEvaluationTime: Math.round(avgEvaluationTime),
-              engineUptime: engineStatus.isRunning && engineStatus.startTime
-                ? Math.floor((Date.now() - engineStatus.startTime) / 1000)
-                : 0
+              engineRunning: engineStatus.isRunning,
+              engineMode: engineStatus.mode
             };
 
             const data = JSON.stringify({

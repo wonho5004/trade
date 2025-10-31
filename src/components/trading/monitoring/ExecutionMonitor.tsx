@@ -19,7 +19,8 @@ interface ExecutionStats {
   failedOrders: number;
   activePositions: number;
   lastEvaluation: number | null;
-  engineUptime: number;
+  engineRunning: boolean;
+  engineMode: string;
   avgEvaluationTime: number;
 }
 
@@ -31,7 +32,8 @@ export function ExecutionMonitor() {
     failedOrders: 0,
     activePositions: 0,
     lastEvaluation: null,
-    engineUptime: 0,
+    engineRunning: false,
+    engineMode: 'idle',
     avgEvaluationTime: 0
   });
   const [filter, setFilter] = useState<'all' | 'error' | 'warning' | 'info'>('all');
@@ -389,10 +391,15 @@ export function ExecutionMonitor() {
         <div className="bg-zinc-900 rounded-lg p-3">
           <div className="flex items-center gap-2 mb-1">
             <Clock className="w-4 h-4 text-purple-400" />
-            <span className="text-xs text-zinc-500">가동 시간</span>
+            <span className="text-xs text-zinc-500">엔진 상태</span>
           </div>
           <div className="text-lg font-semibold text-zinc-100">
-            {formatUptime(stats.engineUptime)}
+            <span className={stats.engineRunning ? 'text-emerald-400' : 'text-zinc-500'}>
+              {stats.engineRunning ? '실행 중' : '중지'}
+            </span>
+            <span className="text-xs text-zinc-400 ml-2">
+              ({stats.engineMode})
+            </span>
           </div>
         </div>
 

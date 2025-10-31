@@ -63,7 +63,9 @@ const evalStatus = (node: StatusLeafNode, ctx: EvaluationContext): boolean => {
   if (metric === 'profitRate') {
     const v = Number(ctx.profitRatePct ?? NaN);
     if (unit && unit !== 'percent') return false;
-    return cmp(v, comparator, value);
+    const result = cmp(v, comparator, value);
+    console.log(`      [Status Eval] profitRate: ${v.toFixed(2)}% ${comparator} ${value}% => ${result ? '✅' : '❌'}`);
+    return result;
   }
 
   if (metric === 'margin') {

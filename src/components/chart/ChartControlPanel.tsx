@@ -39,7 +39,7 @@ const overlayLabels: Array<{
   { key: 'rsi', label: 'RSI', configurable: true },
   { key: 'macd', label: 'MACD', configurable: true },
   { key: 'dmi', label: 'DMI', configurable: true },
-  { key: 'highlight', label: '조건 시각화', configurable: false }
+  { key: 'highlight', label: '드로잉', configurable: false }
 ];
 
 const lineStyleOptions: Array<{ value: LineStyleOption; label: string }> = [
@@ -1496,117 +1496,6 @@ export function ChartControlPanel() {
   return (
     <aside className="flex flex-col gap-4 rounded-lg border border-zinc-800 bg-zinc-950 p-4 text-sm">
       <div className="flex flex-col gap-2">
-        <div className="flex items-center gap-2">
-          <select
-            value={quote}
-            onChange={(event) => setQuote(event.target.value as QuoteCurrency)}
-            className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-xs uppercase text-zinc-200 focus:border-emerald-500 focus:outline-none"
-          >
-            {quoteOptions.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
-          <select
-            value={sortMode}
-            onChange={(event) => setSortMode(event.target.value as typeof sortMode)}
-            className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-xs text-zinc-200 focus:border-emerald-500 focus:outline-none"
-          >
-            {sortOptions.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-          <div className="relative flex-1">
-            <input
-              type="text"
-              value={search}
-              onChange={(event) => {
-                const value = event.target.value.toUpperCase();
-                setSearch(value);
-                const matched = tickers.find((item) => item.symbol === value);
-                if (matched) {
-                  setSymbol(matched.symbol);
-                }
-              }}
-              placeholder={`Search ${quote} markets`}
-              onFocus={() => setIsSymbolOpen(true)}
-              onBlur={() => {
-                window.setTimeout(() => setIsSymbolOpen(false), 120);
-              }}
-              className="w-full rounded border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 focus:border-emerald-500 focus:outline-none"
-            />
-            {isLoadingTickers && (
-              <div className="pointer-events-none absolute inset-y-0 right-2 flex items-center text-[11px] uppercase text-zinc-500">
-                loading…
-              </div>
-            )}
-            {!isLoadingTickers && isSymbolOpen && (
-              <div className="absolute z-20 mt-1 max-h-72 w-full overflow-y-auto rounded border border-zinc-800 bg-zinc-950 shadow-lg">
-                {tickers.length > 0 ? (
-                  tickers.slice(0, 200).map((item) => (
-                    <button
-                      key={item.symbol}
-                      type="button"
-                      onMouseDown={(event) => {
-                        event.preventDefault();
-                        setSymbol(item.symbol);
-                        setSearch(item.symbol);
-                        setIsSymbolOpen(false);
-                      }}
-                      className={`flex w-full items-center justify-between px-3 py-2 text-xs transition hover:bg-zinc-800 ${
-                        symbol === item.symbol ? 'bg-emerald-500/10 text-emerald-200' : 'text-zinc-300'
-                      }`}
-                    >
-                      <span className="flex flex-col items-start">
-                        <span className="font-semibold text-sm text-zinc-100">{item.symbol}</span>
-                        <span className="flex items-center gap-3 text-[11px] text-zinc-500">
-                          <span>
-                            Vol {Intl.NumberFormat('en', { notation: 'compact' }).format(item.volume)}
-                          </span>
-                          <span>
-                            Val {Intl.NumberFormat('en', { notation: 'compact' }).format(item.quoteVolume)}
-                          </span>
-                        </span>
-                      </span>
-                      <span
-                        className={`text-[11px] font-semibold ${
-                          item.priceChangePercent >= 0 ? 'text-emerald-400' : 'text-rose-400'
-                        }`}
-                      >
-                        {item.priceChangePercent.toFixed(2)}%
-                      </span>
-                    </button>
-                  ))
-                ) : (
-                  <div className="px-3 py-2 text-xs text-zinc-500">No markets found</div>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-      <div className="flex flex-col gap-2">
-        <span className="text-xs uppercase tracking-wide text-zinc-500">시간봉</span>
-        <div className="flex flex-wrap gap-2">
-          {intervalOptions.map((option) => (
-            <button
-              key={option}
-              type="button"
-              onClick={() => handleIntervalClick(option)}
-              disabled={isPending && interval === option}
-              className={`rounded px-3 py-1.5 text-xs font-semibold transition ${
-                interval === option ? 'bg-emerald-500 text-emerald-950' : 'bg-zinc-900 text-zinc-300 hover:bg-zinc-800'
-              }`}
-            >
-              {option}
-            </button>
-          ))}
-        </div>
-      </div>
-      <div className="flex flex-col gap-2">
         <span className="text-xs uppercase tracking-wide text-zinc-500">지표 설정</span>
         <div className="grid gap-2">
           {overlayLabels.map((overlay) => (
@@ -1621,13 +1510,6 @@ export function ChartControlPanel() {
                 >
                   <span className="font-medium">{overlay.label}</span>
                   <div className="flex items-center gap-2">
-                    <span
-                      className={`text-[11px] ${
-                        highlightActive ? 'text-emerald-200' : 'text-zinc-500'
-                      }`}
-                    >
-                      {highlightSummary}
-                    </span>
                     <button
                       type="button"
                       onClick={handleHighlightEnable}
@@ -1637,7 +1519,7 @@ export function ChartControlPanel() {
                           : 'border-zinc-700 text-zinc-300 hover:border-emerald-500 hover:text-emerald-300'
                       }`}
                     >
-                      드로잉 설정
+                      설정
                     </button>
                     <button
                       type="button"

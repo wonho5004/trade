@@ -487,8 +487,9 @@ export class ExecutionEngine {
    * @param simulationCapital - 시뮬레이션 모드 시작 자본금 (simulation 모드에서만 필요)
    */
   async start(mode: 'monitoring' | 'simulation' | 'trading' = 'monitoring', simulationCapital?: number, durationHours?: number): Promise<void> {
-    // DB에서 현재 상태 로드
-    await this.loadStateFromDB();
+    // Note: start()는 새로운 실행을 시작하므로 DB에서 이전 상태를 로드하지 않음
+    // 상태 복구는 생성자에서 loadStateFromDB()로 처리됨
+    // await this.loadStateFromDB(); // 제거: 새 시작 시 이전 상태 무시
 
     if (this.isRunning) {
       addEngineLog({
@@ -585,8 +586,8 @@ export class ExecutionEngine {
    * 엔진 중지
    */
   async stop(): Promise<void> {
-    // DB에서 현재 상태 로드
-    await this.loadStateFromDB();
+    // Note: 메모리 상태를 신뢰 (싱글톤이므로 DB 로드 불필요)
+    // await this.loadStateFromDB(); // 제거: stop은 상태를 수정하므로 로드 불필요
 
     if (!this.isRunning) {
       addEngineLog({
@@ -1204,13 +1205,20 @@ export class ExecutionEngine {
     console.log(`    Current Price: ${currentPrice}`);
 
     // 3. 포지션 확인 (시뮬레이션 모드에서는 가상 포지션 사용)
-    const positionKey = `${symbol}_long`; // TODO: hedge mode에서는 direction 별로
-    const position = this.mode === 'simulation'
-      ? this.virtualPositions.get(positionKey)
-      : this.positions.get(positionKey);
+    // 롱과 숏 포지션 모두 확인
+    const longPositionKey = `${symbol}_long`;
+    const shortPositionKey = `${symbol}_short`;
+    const longPosition = this.mode === 'simulation'
+      ? this.virtualPositions.get(longPositionKey)
+      : this.positions.get(longPositionKey);
+    const shortPosition = this.mode === 'simulation'
+      ? this.virtualPositions.get(shortPositionKey)
+      : this.positions.get(shortPositionKey);
+
+    const position = longPosition || shortPosition;
     const hasPosition = !!position;
 
-    console.log(`    Position: ${hasPosition ? 'YES' : 'NO'}`);
+    console.log(`    Position: ${hasPosition ? 'YES' : 'NO'} (Long: ${!!longPosition}, Short: ${!!shortPosition})`);
 
     // 4. 진입 조건 평가 (포지션이 없을 때)
     if (!hasPosition) {
@@ -1520,24 +1528,9 @@ export class ExecutionEngine {
               }
             }
           );
-        } else {
-          // 포지션이 없어도 테스트를 위해 청산 조건 평가 (지표 계산 확인용)
-          console.log(`    ℹ️ Evaluating exit conditions without position (test mode)`);
-          console.log(`    📋 Exit conditions structure:`, JSON.stringify(directionExitConditions, null, 2).substring(0, 500));
-          const exitResult = await this.evaluateConditions(
-            symbol,
-            interval,
-            directionExitConditions,
-            'long', // 기본값
-            candleCurrent,
-            candlePrevious
-          );
-
-          console.log(`    Exit Signal (test): ${exitResult.signal ? '✅ TRUE' : '❌ FALSE'}`);
-
-          // 청산 조건 평가 결과 로그만 저장 (DB 저장은 스킵)
-          this.logEvaluationDetails(symbol, 'EXIT', exitResult);
         }
+        // Note: 포지션이 없을 때는 청산 조건을 평가하지 않음
+        // 청산 조건은 포지션이 있을 때만 의미가 있으므로
       }
     } else if (hasPosition) {
       console.log(`    ⚠️ Exit conditions not configured (but position exists!)`);
@@ -1650,10 +1643,17 @@ export class ExecutionEngine {
     const currentPrice = candleCurrent?.close || 0;
     const entryPrice = position.entryPrice || 0;
 
-    // 수익률 계산
-    const profitRatePct = entryPrice > 0
-      ? ((currentPrice - entryPrice) / entryPrice) * 100
-      : 0;
+    // 수익률 계산 (direction 고려)
+    let profitRatePct = 0;
+    if (entryPrice > 0) {
+      if (position.direction === 'long') {
+        // 롱 포지션: 현재가가 진입가보다 높으면 수익
+        profitRatePct = ((currentPrice - entryPrice) / entryPrice) * 100;
+      } else {
+        // 숏 포지션: 현재가가 진입가보다 낮으면 수익
+        profitRatePct = ((entryPrice - currentPrice) / entryPrice) * 100;
+      }
+    }
 
     // 진입 후 경과 시간 계산
     const entryTime = position.entryTime ? new Date(position.entryTime).getTime() : Date.now();
@@ -1662,11 +1662,14 @@ export class ExecutionEngine {
     const entryAgeHours = ageMs / (1000 * 60 * 60);
     const entryAgeMinutes = ageMs / (1000 * 60);
 
+    console.log(`    [Exit Context ${symbol}] Direction: ${position.direction}, EntryPrice: ${entryPrice}, CurrentPrice: ${currentPrice}, ProfitRate: ${profitRatePct.toFixed(2)}%`);
+
     return {
       profitRatePct,
       entryAgeDays,
       entryAgeHours,
       entryAgeMinutes,
+      direction: position.direction,
       unrealizedPnl: { asset: 'USDT', value: position.unrealizedPnl || 0 },
       positionSize: { asset: 'USDT', value: position.notional || 0 }
     };
@@ -1958,6 +1961,11 @@ export class ExecutionEngine {
         throw new Error('Simulation config not initialized');
       }
 
+      // 레버리지 가져오기 (심볼별 커스텀 레버리지 우선, 없으면 기본 레버리지)
+      const leverage = strategy.settings.symbolSelection?.leverageOverrides?.[symbol]
+        || strategy.settings.leverage
+        || 1;
+
       // 포지션 크기 계산 (자본금의 1% 리스크)
       const riskPerTrade = this.simulationConfig.currentCapital * 0.01;
       const quantity = riskPerTrade / entryPrice;
@@ -1970,6 +1978,7 @@ export class ExecutionEngine {
         direction,
         entryPrice,
         quantity,
+        leverage,
         unrealizedPnL: 0,
         realizedPnL: 0,
         strategyId: strategy.id,
@@ -2231,8 +2240,9 @@ export class ExecutionEngine {
    * 엔진 상태 조회
    */
   async getStatus() {
-    // DB에서 최신 상태 로드
-    await this.loadStateFromDB();
+    // Note: 메모리 상태가 신뢰할 수 있는 소스임 (싱글톤 패턴)
+    // DB 로드는 초기화 시에만 필요하며, 실행 중에는 메모리 상태를 사용
+    // await this.loadStateFromDB(); // 제거: stop() 직후 호출 시 경쟁 조건 발생 가능
 
     return {
       isRunning: this.isRunning,

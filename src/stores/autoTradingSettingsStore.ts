@@ -19,6 +19,7 @@ type AutoTradingSettingsStore = {
       | { type: 'stopLossLine' },
     indicators: AutoTradingSettings['entry']['long']['indicators']
   ) => void;
+  loadSettings: (settings: unknown) => void;
   reset: () => void;
   getDefaultExcludedSymbols: () => string[];
 };
@@ -54,6 +55,9 @@ export const useAutoTradingSettingsStore = create<AutoTradingSettingsStore>()(
           next.metadata.lastSavedAt = new Date().toISOString();
           return { settings: next };
         });
+      },
+      loadSettings: (settings) => {
+        set({ settings: normalizeAutoTradingSettings(settings) });
       },
       reset: () => set({ settings: createDefaultAutoTradingSettings() }),
       getDefaultExcludedSymbols: () => DEFAULT_EXCLUDED_SYMBOLS.slice()
