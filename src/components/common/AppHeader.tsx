@@ -11,7 +11,7 @@ const baseNavItems: Array<{ href: Route; label: string }> = [
   { href: '/dashboard', label: '대시보드' },
   { href: '/trading', label: '거래' },
   { href: '/trading/automation', label: '자동매매설정' },
-  { href: '/analysis', label: '분석' }
+  { href: '/trading/monitoring', label: '모니터링' }
 ];
 
 const ROLE_LABEL: Record<UserRole, string> = {

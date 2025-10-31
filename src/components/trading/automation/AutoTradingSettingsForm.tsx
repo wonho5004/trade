@@ -40,6 +40,7 @@ import {
   formatHedgeSettings,
   formatStopLossLineSettings
 } from '@/lib/trading/settingsSummary';
+import { ConditionSimulator } from './ConditionSimulator';
 
 type Draft = AutoTradingSettings;
 
@@ -2575,14 +2576,31 @@ export function AutoTradingSettingsForm() {
         </SectionFrame>
   </div>
 
-  {/* Footer */}
+  {/* Condition Simulator - 로직 테스트 */}
   <div className="order-10">
+    <SectionFrame
+      sectionKey="simulator"
+      title="로직 시뮬레이터"
+      description="생성한 조건을 실시간으로 테스트해보세요"
+      isDirty={false}
+      forceEnableSave={false}
+    >
+      <ConditionSimulator
+        conditions={draft.entry?.long?.conditions || draft.entry?.short?.conditions}
+        symbol={draft.symbolSelection.manualSymbols[0] || 'BTCUSDT'}
+        timeframe={draft.timeframe}
+      />
+    </SectionFrame>
+  </div>
+
+  {/* Footer */}
+  <div className="order-11">
     <LogicSummary settings={draft} />
   </div>
-  <div className="order-11">
+  <div className="order-12">
     <FooterActions />
   </div>
-  <div className="order-12">
+  <div className="order-13">
     <StrategyManagerPanel />
   </div>
   <LogicNameManagerModal

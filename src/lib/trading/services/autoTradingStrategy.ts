@@ -70,7 +70,12 @@ export async function generateAutoTradingStrategy(settings: AutoTradingSettings)
     const res = await fetch('/api/strategies', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: settings.logicName, payload: settings })
+      body: JSON.stringify({
+        name: settings.logicName || '자동생성 전략',
+        description: '로직 생성을 통해 자동으로 생성된 전략입니다.',
+        settings: settings,
+        is_active: true
+      })
     });
     if (!res.ok) {
       const json = await res.json().catch(() => ({} as any));

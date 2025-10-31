@@ -151,7 +151,7 @@ export function LogicSummary({ settings }: { settings: AutoTradingSettings }) {
             {chip(`레버리지 ${s.leverage}x`, '기본 레버리지')}
             {chip(`종목 ${s.symbolCount}개`, '타겟 종목 수')}
             {chip(`자산 ${s.assetMode === 'single' ? 'Single' : 'Multi'}`, '증거금 자산 모드')}
-            {chip(`포지션 ${s.positionMode === 'one_way' ? 'One-Way' : 'Hedge'}`, '계정 포지션 모드')}
+            {chip(`포지션 ${s.positionMode === 'one_way' ? 'One-Way(단방향)' : 'Hedge(양방향)'}`, '계정 포지션 모드 - Hedge 모드는 동시에 롱/숏 포지션 보유 가능')}
             <button className="ml-2 rounded border border-zinc-700 px-1 py-0.5 text-[10px] text-zinc-300 hover:border-sky-500/60 hover:text-sky-200" onClick={() => setDetail({ key: 'base', title: '기본 설정 상세' })}>상세</button>
           </div>
           <div className="mt-1 text-[11px] text-zinc-500">
@@ -245,7 +245,8 @@ export function LogicSummary({ settings }: { settings: AutoTradingSettings }) {
         <li className="relative pl-5 text-[12px] leading-5 before:absolute before:left-0 before:top-1 before:h-3 before:w-3 before:rounded-full before:border before:border-fuchsia-500/60" aria-label="헤지">
           <div className="text-zinc-300">
             <span className="mr-2 font-medium text-zinc-100">5) 헤지</span>
-            {linkChip(s.hedgeActivation.enabled ? `${hedgeSum.groups}그룹/${hedgeSum.indicators}지표` : 'OFF', 'hedge', go, '헤지 활성화 조건 개요')} {s.hedgeActivation.enabled ? chip(`방향 ${s.hedgeActivation.directions.join('/')}`, '헤지 방향') : null}
+            {linkChip(s.hedgeActivation.enabled ? `${hedgeSum.groups}그룹/${hedgeSum.indicators}지표` : 'OFF', 'hedge', go, '헤지 활성화 조건 개요')}
+            {s.hedgeActivation.enabled ? chip(`방향: ${s.hedgeActivation.directions.length === 2 ? '양방향(long/short)' : s.hedgeActivation.directions.join('/')}`, '헤지 진입 가능 방향') : null}
             <button title="헤지 토글" className="ml-2 rounded border border-zinc-700 px-1 text-[10px] text-zinc-300 hover:border-emerald-500/60 hover:text-emerald-200" onClick={() => updateSettings(d => { d.hedgeActivation.enabled = !d.hedgeActivation.enabled; })}>{s.hedgeActivation.enabled ? '헤지 ON' : '헤지 OFF'}</button>
             <button className="ml-1 rounded border border-zinc-700 px-1 py-0.5 text-[10px] text-zinc-300 hover:border-sky-500/60 hover:text-sky-200" onClick={() => setDetail({ key: 'hedge', title: '헤지 상세' })}>상세</button>
           </div>
@@ -490,10 +491,17 @@ function renderDetail(key: string, s: AutoTradingSettings, counts: Record<string
     );
   }
   if (key === 'hedge') {
+    const directionText = s.hedgeActivation.directions.length === 2
+      ? '양방향 (롱/숏 모두 가능)'
+      : s.hedgeActivation.directions.length === 1
+      ? `단방향 (${s.hedgeActivation.directions[0] === 'long' ? '롱만' : '숏만'})`
+      : '미설정';
     return (
       <ul className="list-disc pl-5">
-        <li>헤지 활성화: {s.hedgeActivation.enabled ? 'ON' : 'OFF'} (방향: {s.hedgeActivation.directions.join('/') || '-'})</li>
+        <li>헤지 활성화: {s.hedgeActivation.enabled ? 'ON' : 'OFF'}</li>
+        <li>헤지 방향: {directionText}</li>
         <li>조건: {counts.hedgeSum.groups}그룹/{counts.hedgeSum.indicators}지표</li>
+        <li className="text-zinc-400 text-[11px] mt-1">※ Hedge 모드 계정에서만 작동합니다. One-Way 모드에서는 헤지를 사용할 수 없습니다.</li>
       </ul>
     );
   }
