@@ -1,17 +1,22 @@
 "use client";
 
 import { useState } from 'react';
+import { Save } from 'lucide-react';
 
 import { useAutoTradingSettingsStore } from '@/stores/autoTradingSettingsStore';
 import { generateAutoTradingStrategy } from '@/lib/trading/services/autoTradingStrategy';
 import { useOptionalToast } from '@/components/common/ToastProvider';
 import { useUIPreferencesStore } from '@/stores/uiPreferencesStore';
+import { StrategySaveModal } from './StrategySaveModal';
+import { SettingsConfirmModal } from './SettingsConfirmModal';
 
 export function FooterActions() {
   const settings = useAutoTradingSettingsStore((s) => s.settings);
   const updateSettings = useAutoTradingSettingsStore((s) => s.updateSettings);
   const reset = useAutoTradingSettingsStore((s) => (s as any).reset as () => void);
   const [busy, setBusy] = useState<'saving' | 'generating' | null>(null);
+  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
   const { show } = useOptionalToast();
   const setCollapsed = useUIPreferencesStore((s) => s.setCollapsed);
 
@@ -62,23 +67,51 @@ export function FooterActions() {
   };
 
   return (
-    <div className="flex items-center justify-end gap-2">
-      <button
-        type="button"
-        disabled={busy !== null}
-        onClick={saveTemp}
-        className="rounded border border-zinc-700 px-3 py-1.5 text-xs font-semibold text-zinc-300 disabled:cursor-not-allowed disabled:opacity-50"
-      >
-        임시 저장
-      </button>
-      <button
-        type="button"
-        disabled={busy !== null}
-        onClick={handleGenerate}
-        className="rounded border border-emerald-500/60 px-3 py-1.5 text-xs font-semibold text-emerald-200 disabled:cursor-not-allowed disabled:opacity-50"
-      >
-        로직 생성
-      </button>
-    </div>
+    <>
+      <div className="flex items-center justify-end gap-2">
+        <button
+          type="button"
+          disabled={busy !== null}
+          onClick={saveTemp}
+          className="rounded border border-zinc-700 px-3 py-1.5 text-xs font-semibold text-zinc-300 hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50 transition-colors"
+        >
+          설정 저장
+        </button>
+        <button
+          type="button"
+          disabled={busy !== null}
+          onClick={() => setShowSaveModal(true)}
+          className="flex items-center gap-1.5 rounded border border-blue-500/60 px-3 py-1.5 text-xs font-semibold text-blue-200 hover:bg-blue-500/10 disabled:cursor-not-allowed disabled:opacity-50 transition-colors"
+        >
+          <Save className="h-3.5 w-3.5" />
+          전략으로 저장
+        </button>
+        <button
+          type="button"
+          disabled={busy !== null}
+          onClick={() => setShowConfirmModal(true)}
+          className="rounded border border-emerald-500/60 px-3 py-1.5 text-xs font-semibold text-emerald-200 hover:bg-emerald-500/10 disabled:cursor-not-allowed disabled:opacity-50 transition-colors"
+        >
+          로직 생성
+        </button>
+      </div>
+
+      {showSaveModal && (
+        <StrategySaveModal
+          currentSettings={settings}
+          onClose={() => setShowSaveModal(false)}
+        />
+      )}
+
+      <SettingsConfirmModal
+        settings={settings}
+        isOpen={showConfirmModal}
+        onConfirm={async () => {
+          setShowConfirmModal(false);
+          await handleGenerate();
+        }}
+        onCancel={() => setShowConfirmModal(false)}
+      />
+    </>
   );
 }

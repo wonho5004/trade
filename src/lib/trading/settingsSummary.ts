@@ -43,6 +43,43 @@ function formatIndicatorName(type: string, metric?: string): string {
   }
 }
 
+// DMI 설정을 상세하게 포맷
+function formatDMIConfig(config: any): string[] {
+  const details: string[] = [];
+
+  if (!config) return details;
+
+  // ADX 조건
+  if (config.adx && config.adx.enabled) {
+    const comp = formatComparator(config.adx.comparator || 'over');
+    details.push(`ADX ${comp} ${config.adx.value || 25}`);
+  }
+
+  // DI 비교
+  if (config.diComparison) {
+    if (config.diComparison === 'plus_over_minus') {
+      details.push('DI+ > DI-');
+    } else if (config.diComparison === 'minus_over_plus') {
+      details.push('DI- > DI+');
+    }
+  }
+
+  // ADX vs DI 비교
+  if (config.adxVsDi) {
+    if (config.adxVsDi === 'adx_gt_di_plus') {
+      details.push('ADX > DI+');
+    } else if (config.adxVsDi === 'adx_lt_di_plus') {
+      details.push('DI+ > ADX');
+    } else if (config.adxVsDi === 'adx_gt_di_minus') {
+      details.push('ADX > DI-');
+    } else if (config.adxVsDi === 'adx_lt_di_minus') {
+      details.push('DI- > ADX');
+    }
+  }
+
+  return details;
+}
+
 // IndicatorLeafNode를 한글로 변환
 function formatIndicatorLeaf(node: any, indicatorsMap: Map<string, any>): string {
   if (!node || node.kind !== 'indicator') return '';
@@ -52,6 +89,14 @@ function formatIndicatorLeaf(node: any, indicatorsMap: Map<string, any>): string
 
   const indicatorName = formatIndicatorName(indicator.type, node.metric);
   const comparison = node.comparison;
+
+  // DMI인 경우 상세 정보 추가
+  if (indicator.type === 'dmi' && indicator.config) {
+    const dmiDetails = formatDMIConfig(indicator.config);
+    if (dmiDetails.length > 0) {
+      return `${indicatorName} (${dmiDetails.join(' AND ')})`;
+    }
+  }
 
   // comparison이 없거나 none인 경우
   if (!comparison || comparison.kind === 'none') {
