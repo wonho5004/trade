@@ -154,12 +154,38 @@ export class ExecutionEngine {
 
       const { data, error } = await supabase
         .from('engine_state')
-        .select('is_running')
+        .select('*')
         .eq('id', 'singleton')
         .single();
 
       if (!error && data) {
         this.isRunning = data.is_running;
+
+        // 모드 복구
+        if (data.mode && ['idle', 'monitoring', 'simulation', 'trading'].includes(data.mode)) {
+          this.mode = data.mode as 'idle' | 'monitoring' | 'simulation' | 'trading';
+        }
+
+        // 시뮬레이션 설정 복구
+        if (data.simulation_config && typeof data.simulation_config === 'object') {
+          this.simulationConfig = data.simulation_config as SimulationConfig;
+          console.log('[loadStateFromDB] Restored simulation config:', this.simulationConfig);
+        }
+
+        // 가상 포지션 복구
+        if (data.virtual_positions && Array.isArray(data.virtual_positions)) {
+          this.virtualPositions.clear();
+          for (const pos of data.virtual_positions) {
+            const key = `${pos.symbol}_${pos.direction}`;
+            this.virtualPositions.set(key, pos as Position);
+          }
+          console.log(`[loadStateFromDB] Restored ${this.virtualPositions.size} virtual positions`);
+        }
+
+        // 사용자 ID 복구
+        if (data.user_id) {
+          this.userId = data.user_id;
+        }
       } else if (error) {
         // 테이블이 없거나 레코드가 없으면 생성 시도
         console.log('Engine state not found, initializing...', error.message);
@@ -427,17 +453,28 @@ export class ExecutionEngine {
     try {
       const supabase = createSupabaseServerClient('service');
 
+      // 가상 포지션을 배열로 변환
+      const virtualPositionsArray = Array.from(this.virtualPositions.values());
+
+      const stateData = {
+        id: 'singleton',
+        is_running: isRunning,
+        mode: this.mode,
+        simulation_config: this.simulationConfig,
+        virtual_positions: virtualPositionsArray,
+        user_id: this.userId,
+        [isRunning ? 'started_at' : 'stopped_at']: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+
       const { error } = await supabase
         .from('engine_state')
-        .upsert({
-          id: 'singleton',
-          is_running: isRunning,
-          [isRunning ? 'started_at' : 'stopped_at']: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        });
+        .upsert(stateData);
 
       if (error) {
         console.error('Failed to save engine state to DB:', error);
+      } else {
+        console.log(`[saveStateToDB] Saved state: mode=${this.mode}, virtualPositions=${virtualPositionsArray.length}`);
       }
     } catch (error) {
       console.error('Failed to save engine state to DB:', error);
@@ -971,6 +1008,13 @@ export class ExecutionEngine {
           this.openCircuitBreaker();
         }
       }
+    }
+
+    // 상태를 주기적으로 DB에 저장 (30초마다)
+    const lastSaveTime = (this as any).lastStateSaveTime || 0;
+    if (now - lastSaveTime > 30000) {
+      await this.saveStateToDB(true);
+      (this as any).lastStateSaveTime = now;
     }
   }
 
@@ -1938,6 +1982,9 @@ export class ExecutionEngine {
       // DB에 거래 저장
       await this.saveSimulationTrade(symbol, 'ENTRY', direction.toUpperCase() as 'LONG' | 'SHORT', entryPrice, quantity);
 
+      // 엔진 상태 저장 (가상 포지션 포함)
+      await this.saveStateToDB(true);
+
       addEngineLog({
         level: 'success',
         category: '시뮬레이션',
@@ -2030,6 +2077,9 @@ export class ExecutionEngine {
 
       // 세션 통계 업데이트
       await this.updateSimulationSession();
+
+      // 엔진 상태 저장 (가상 포지션 및 시뮬레이션 설정 포함)
+      await this.saveStateToDB(true);
 
       addEngineLog({
         level: pnl > 0 ? 'success' : 'warning',
